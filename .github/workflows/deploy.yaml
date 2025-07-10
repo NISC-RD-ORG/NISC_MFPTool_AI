@@ -34,8 +34,8 @@ jobs:
           echo "成功複製前端 codebase 至 : '$FRONT_BUILD_DIR'"
 
           echo "正在啟動前端服務..."
-          pm2 delete "NISC_MFP_Tool_Frontend" --silent || true
-          pm2 --name NISC_MFP_Tool_Frontend start "http-server $FRONT_BUILD_DIR --proxy http://127.0.4.1:3000? -a 127.0.4.1 -p 3000"
+          pm2 delete "NISC_MFPTool_Frontend" --silent || true
+          pm2 --name NISC_MFPTool_Frontend start "http-server $FRONT_BUILD_DIR --proxy http://127.0.4.1:3000? -a 127.0.4.1 -p 3000"
           echo "前端服務啟動成功，埠號為 3000，由 Nginx 將入口 ai.nisc.com.tw/mfp_tool 轉向至 3000。"
 
       - name: Clean unused codebase for deleted branches
@@ -110,8 +110,8 @@ jobs:
           echo "後端依賴安裝完成"
 
           echo "正在啟動後端服務..."
-          pm2 delete "NISC_MFP_Tool_Backend" || true
-          pm2 --name NISC_MFP_Tool_Backend start "uvicorn main:app --host 127.0.4.1 --port 8000"
+          pm2 delete "NISC_MFPTool_Backend" || true
+          pm2 --name NISC_MFPTool_Backend start "uvicorn main:app --host 127.0.4.1 --port 8000"
           echo "後端服務啟動成功，埠號為 8000，由 Nginx 將入口 ai.nisc.com.tw/mfp_tool/api 轉向至 8000。"
 
       - name: Display post-deploy instructions
