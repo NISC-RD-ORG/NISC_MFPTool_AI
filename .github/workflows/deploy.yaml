@@ -1,0 +1,122 @@
+name: Deploy MFP Tool App
+
+on:
+  push:
+    branches:
+      - "**" # 監聽所有分支
+  workflow_dispatch: # 手動觸發
+
+jobs:
+  deploy-main:
+    if: github.ref == 'refs/heads/main' # 僅在 main 分支上執行
+
+    runs-on: [self-hosted, ntu]
+
+    env:
+      BACKEND_BUILDS_DIR: /home/user/actions-runner-mfp-tool-ai/backend
+      FRONTEND_BUILDS_DIR: /home/user/actions-runner-mfp-tool-ai/frontend
+      ENV: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build and Serve Frontend with PM2
+        working-directory: ${{ github.workspace }}/frontend
+        run: |
+          BRANCH_NAME=$(echo "${GITHUB_REF#refs/heads/}" | sed 's|/|_|g')
+          FRONT_BUILD_DIR="${FRONTEND_BUILDS_DIR}/build_${BRANCH_NAME}"
+
+          echo "正在複製前端 codebase 至 : '$FRONT_BUILD_DIR'"
+          rm -rf "$FRONT_BUILD_DIR"
+          mkdir -p "$(dirname "$FRONT_BUILD_DIR")"
+          cp -rf . "$FRONT_BUILD_DIR"
+          echo "成功複製前端 codebase 至 : '$FRONT_BUILD_DIR'"
+
+          echo "正在啟動前端服務..."
+          pm2 delete "NISC_MFPTool_Frontend" --silent || true
+          pm2 --name NISC_MFPTool_Frontend start "http-server $FRONT_BUILD_DIR --proxy http://127.0.4.1:3000? -a 127.0.4.1 -p 3000"
+          echo "前端服務啟動成功，埠號為 3000，由 Nginx 將入口 ai.nisc.com.tw/mfp_tool 轉向至 3000。"
+
+      - name: Clean unused codebase for deleted branches
+        working-directory: ${{ github.workspace }}/backend
+        run: |
+          echo "目前 Codebase 存放目錄 : ${BACKEND_BUILDS_DIR}"
+          mkdir -p "${BACKEND_BUILDS_DIR}"
+          echo "開始清理已刪除分支對應的 codebase ..."
+
+          EXISTING_BRANCHES=$(git ls-remote --heads origin | awk '{print $2}' | sed 's|refs/heads/||' | sed 's|/|_|g')
+          echo -e "目前存在的分支 : \n$EXISTING_BRANCHES"
+
+          for CODEBASE_DIR in ${BACKEND_BUILDS_DIR}/*; do
+            echo "檢查 codebase 目錄 : $CODEBASE_DIR"
+
+            if ! [ -d "$CODEBASE_DIR" ]; then
+              echo "$CODEBASE_DIR 不是目錄，跳過..."
+              continue
+            fi
+
+            BRANCH_NAME=$(basename "$CODEBASE_DIR")
+            FOUND=0
+            for EXIST_BRANCH in $EXISTING_BRANCHES; do
+              if [ "$BRANCH_NAME" = "$EXIST_BRANCH" ]; then
+                FOUND=1
+                break
+              fi
+            done
+
+            if [ $FOUND -eq 0 ]; then
+              echo "刪除 codebase : $CODEBASE_DIR（分支已刪除）"
+              rm -rf "$CODEBASE_DIR"
+            else
+              echo "保留 codebase : $CODEBASE_DIR（分支仍存在）"
+            fi
+          done
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+
+      - name: Copy the codebase from action runner to server local
+        working-directory: ${{ github.workspace }}/backend
+        run: |
+          export ENV=production
+          BRANCH_NAME=$(echo "${GITHUB_REF#refs/heads/}" | sed 's|/|_|g')
+          echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
+
+          CODEBASE_DIR="${BACKEND_BUILDS_DIR}/${BRANCH_NAME}"
+          echo "CODEBASE_DIR=$CODEBASE_DIR" >> $GITHUB_ENV
+
+          echo "正在複製 codebase 到伺服器 : '$CODEBASE_DIR'..."
+          cp -rf . "$CODEBASE_DIR"
+          echo "複製完成, codebase 現在位於 : $CODEBASE_DIR"
+
+      - name: Activate Backend .venv and Install Dependencies and Serve Backend via PM2
+        working-directory: ${{ github.workspace }}/backend
+        run: |
+          echo "準備使用 codebase : $CODEBASE_DIR"
+
+          VENV_DIR="${CODEBASE_DIR}/.venv"
+
+          if [ ! -d "$VENV_DIR" ]; then
+            echo "建立新的虛擬環境 : $VENV_DIR"
+            virtualenv "$VENV_DIR"
+          fi
+
+          echo "正在安裝後端依賴..."
+          source "$VENV_DIR/bin/activate"
+          pip install -r requirements.txt
+          echo "後端依賴安裝完成"
+
+          echo "正在啟動後端服務..."
+          pm2 delete "NISC_MFPTool_Backend" || true
+          pm2 --name NISC_MFPTool_Backend start "uvicorn main:app --host 127.0.4.1 --port 8000"
+          echo "後端服務啟動成功，埠號為 8000，由 Nginx 將入口 ai.nisc.com.tw/mfp_tool/api 轉向至 8000。"
+
+      - name: Display post-deploy instructions
+        run: |
+          echo -e "請執行 'pm2 list' 查看進程狀態，\n\
+          然後開啟存取以下網址: \n\
+          \033[1;31mhttps://ai.nisc.com.tw/mfp_tool\033[0m\n\
+          存取應用程式。"
