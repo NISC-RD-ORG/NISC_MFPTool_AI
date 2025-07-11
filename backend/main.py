@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 @app.get("/hello")
 async def get_hello():
-    return {"message": "Hello from FastAPI!"}
+    return {"message": "Hello from MFP_Tool 2025/07/11!"}
 
 @app.post("/upload")
 async def upload_file(file: UploadFile):
