@@ -1,11 +1,12 @@
-from fastapi import FastAPI, File, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 import shutil
 import logging
 import os
+import json
 
 app = FastAPI()
 
@@ -60,3 +61,60 @@ async def upload_file(file: UploadFile):
     except Exception as e:
         logger.error(f"Error uploading file: {e}")
         return {"message": "File upload failed", "error": str(e)}
+
+@app.get("/gettool/{tool_name}")
+async def get_tool(tool_name: str):
+    try:
+        tools_path = Path(__file__).parent.parent / "tools"
+        tool_path = tools_path / tool_name
+        
+        if not tool_path.exists():
+            raise HTTPException(status_code=404, detail="Tool not found")
+        
+        # Read content.md
+        content_file = tool_path / "content.md"
+        if not content_file.exists():
+            raise HTTPException(status_code=404, detail="Content file not found")
+        
+        with content_file.open("r", encoding="utf-8") as f:
+            content = f.read()
+        
+        # Get metadata if exists
+        metadata_file = tool_path / "metadata.json"
+        metadata = {}
+        if metadata_file.exists():
+            with metadata_file.open("r", encoding="utf-8") as f:
+                metadata = json.load(f)
+        
+        # Get list of images
+        images_path = tool_path / "image"
+        images = []
+        if images_path.exists():
+            for img_file in images_path.iterdir():
+                if img_file.is_file() and img_file.suffix.lower() in ['.png', '.jpg', '.jpeg', '.gif', '.bmp']:
+                    images.append(img_file.name)
+        
+        logger.info(f"Retrieved tool: {tool_name}")
+        return {
+            "tool_name": tool_name,
+            "content": content,
+            "metadata": metadata,
+            "images": images
+        }
+    except Exception as e:
+        logger.error(f"Error getting tool {tool_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving tool: {str(e)}")
+
+@app.get("/gettoolimage/{tool_name}/{image_name}")
+async def get_tool_image(tool_name: str, image_name: str):
+    try:
+        tools_path = Path(__file__).parent.parent / "tools"
+        image_path = tools_path / tool_name / "image" / image_name
+        
+        if not image_path.exists():
+            raise HTTPException(status_code=404, detail="Image not found")
+        
+        return FileResponse(image_path)
+    except Exception as e:
+        logger.error(f"Error getting image {image_name} for tool {tool_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving image: {str(e)}")
