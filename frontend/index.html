@@ -3,94 +3,168 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>File Upload Interface</title>
+    <title>MFP Tool Interface</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         body {
             font-family: Arial, sans-serif;
             margin: 0;
             padding: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
             height: 100vh;
             background-color: #f4f4f4;
+            display: flex;
         }
-        .upload-container {
+        
+        .sidebar {
+            width: 20%;
             background: #fff;
+            border-right: 1px solid #ddd;
             padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            text-align: center;
+            overflow-y: auto;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
         }
-        .upload-container h1 {
+        
+        .sidebar h2 {
+            margin-top: 0;
             margin-bottom: 20px;
+            color: #333;
+            border-bottom: 2px solid #007BFF;
+            padding-bottom: 10px;
         }
-        .upload-container input[type="file"] {
-            display: none;
+        
+        .tool-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
         }
-        .upload-container label {
-            display: inline-block;
-            padding: 10px 20px;
-            background-color: #007BFF;
-            color: #fff;
+        
+        .tool-item {
+            padding: 10px;
+            margin-bottom: 5px;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
             border-radius: 5px;
             cursor: pointer;
-            transition: background-color 0.3s;
-        }
-        .upload-container label:hover {
-            background-color: #0056b3;
-        }
-        .upload-container .file-name {
-            margin-top: 10px;
+            transition: all 0.3s ease;
+            word-wrap: break-word;
             font-size: 14px;
-            color: #555;
+        }
+        
+        .tool-item:hover {
+            background: #e9ecef;
+            border-color: #007BFF;
+            transform: translateY(-1px);
+        }
+        
+        .tool-item.selected {
+            background: #007BFF;
+            color: white;
+            border-color: #0056b3;
+        }
+        
+        .main-content {
+            width: 80%;
+            padding: 20px;
+            background: white;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .content-header {
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .content-area {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #666;
+            font-size: 18px;
+        }
+        
+        .loading {
+            color: #007BFF;
+        }
+        
+        .error {
+            color: #dc3545;
         }
     </style>
 </head>
 <body>
-    <div class="upload-container">
-        <h1>Upload Your File</h1>
-        <input type="file" id="fileInput">
-        <label for="fileInput"><i class="fas fa-upload"></i> Choose File</label>
-        <p class="file-name" id="fileName">No file chosen</p>
-        <button id="uploadButton">Upload File</button>
-        <p id="uploadStatus"></p>
+    <div class="sidebar">
+        <h2><i class="fas fa-tools"></i> 工具列表</h2>
+        <ul class="tool-list" id="toolList">
+            <li class="loading">載入中...</li>
+        </ul>
+    </div>
+    
+    <div class="main-content">
+        <div class="content-header">
+            <h1 id="contentTitle">請選擇一個工具</h1>
+        </div>
+        <div class="content-area" id="contentArea">
+            請從左側列表中選擇一個工具來查看詳細資訊
+        </div>
     </div>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
         $(document).ready(function() {
-            $('#fileInput').on('change', function() {
-                const fileName = this.files[0] ? this.files[0].name : 'No file chosen';
-                $('#fileName').text(fileName);
-            });
-
-            $('#uploadButton').on('click', function() {
-                const fileInput = document.getElementById('fileInput');
-                const file = fileInput.files[0];
-                if (!file) {
-                    $('#uploadStatus').text('Please choose a file first.');
-                    return;
-                }
-
-                const formData = new FormData();
-                formData.append('file', file);
-
-                fetch('https://ai.nisc.com.tw/mfp_tool/api/upload', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(data => {
-                    $('#uploadStatus').text(data.message);
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                    $('#uploadStatus').text('File upload failed.');
-                });
-            });
+            loadTools();
         });
+
+        function loadTools() {
+            fetch('https://ai.nisc.com.tw/mfp_tool/api/listtools')
+            .then(response => response.json())
+            .then(data => {
+                const toolList = $('#toolList');
+                toolList.empty();
+                
+                if (data.tools && data.tools.length > 0) {
+                    data.tools.forEach(tool => {
+                        const toolItem = $(`
+                            <li class="tool-item" data-tool-name="${tool.name}">
+                                <i class="fas fa-wrench"></i> ${tool.display_name}
+                            </li>
+                        `);
+                        
+                        toolItem.on('click', function() {
+                            selectTool(tool.name, tool.display_name);
+                        });
+                        
+                        toolList.append(toolItem);
+                    });
+                } else {
+                    toolList.append('<li class="error">沒有找到工具</li>');
+                }
+            })
+            .catch(error => {
+                console.error('Error loading tools:', error);
+                $('#toolList').html('<li class="error">載入工具失敗</li>');
+            });
+        }
+
+        function selectTool(toolName, displayName) {
+            // Remove previous selection
+            $('.tool-item').removeClass('selected');
+            
+            // Add selection to clicked item
+            $(`.tool-item[data-tool-name="${toolName}"]`).addClass('selected');
+            
+            // Update content area
+            $('#contentTitle').text(displayName);
+            $('#contentArea').html(`
+                <div>
+                    <h3>已選擇工具: ${displayName}</h3>
+                    <p>工具內部名稱: ${toolName}</p>
+                    <p>這裡將顯示工具的詳細內容...</p>
+                </div>
+            `);
+        }
     </script>
 </body>
 </html>
