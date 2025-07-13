@@ -7,6 +7,8 @@ import shutil
 import logging
 import os
 import json
+import sqlite3
+import hashlib
 
 app = FastAPI()
 
@@ -22,6 +24,83 @@ app.add_middleware(
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Database configuration
+DB_PATH = Path(__file__).parent / "mfptool.db"
+
+def get_db_connection():
+    """Get database connection"""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def hash_password(password: str) -> str:
+    """Hash password using SHA256"""
+    return hashlib.sha256(password.encode()).hexdigest()
+
+def init_database():
+    """Initialize database with users table and default admin user"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Create users table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                uid INTEGER PRIMARY KEY AUTOINCREMENT,
+                account TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                type INTEGER NOT NULL,
+                name TEXT NOT NULL
+            )
+        ''')
+        
+        # Check if admin user already exists
+        cursor.execute("SELECT COUNT(*) FROM users WHERE account = 'admin'")
+        admin_exists = cursor.fetchone()[0] > 0
+        
+        if not admin_exists:
+            # Insert default admin user
+            hashed_password = hash_password("nisc27978831")
+            cursor.execute('''
+                INSERT INTO users (uid, account, password, type, name)
+                VALUES (1, 'admin', ?, 2, '管理者')
+            ''', (hashed_password,))
+            logger.info("Default admin user created")
+        else:
+            logger.info("Admin user already exists")
+        
+        conn.commit()
+        conn.close()
+        return True
+    except Exception as e:
+        logger.error(f"Error initializing database: {e}")
+        return False
+
+@app.get("/initdb")
+async def init_db():
+    """Initialize database endpoint"""
+    try:
+        success = init_database()
+        if success:
+            # Get user count for verification
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT COUNT(*) FROM users")
+            user_count = cursor.fetchone()[0]
+            conn.close()
+            
+            logger.info("Database initialized successfully")
+            return {
+                "message": "Database initialized successfully",
+                "database_path": str(DB_PATH),
+                "user_count": user_count
+            }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to initialize database")
+    except Exception as e:
+        logger.error(f"Error in init_db endpoint: {e}")
+        raise HTTPException(status_code=500, detail=f"Database initialization failed: {str(e)}")
 
 @app.get("/listtools")
 async def list_tools():
