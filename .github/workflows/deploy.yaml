@@ -28,7 +28,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          path: ${CURRENT_BRANCH_DIR}
+          path: ${{ env.CURRENT_BRANCH_DIR }}
 
       - name: Clean unused codebase for deleted branches
         working-directory: ${{ github.workspace }}/backend
