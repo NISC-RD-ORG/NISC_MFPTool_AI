@@ -1,6 +1,7 @@
 fastapi
-uvicorn
+uvicorn[standard]
 python-multipart
 markdown
 python-jose[cryptography]
 passlib[bcrypt]
+pydantic
