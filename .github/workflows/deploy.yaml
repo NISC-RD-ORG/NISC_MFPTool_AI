@@ -27,8 +27,12 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          path: ${{ env.CURRENT_BRANCH_DIR }}
+
+      - name: Copy codebase to external build directory
+        run: |
+          DEST_DIR="/home/user/actions-runner-mfp-tool-ai/${BRANCH_NAME}"
+          mkdir -p "$CURRENT_BRANCH_DIR"
+          cp -rf . "$CURRENT_BRANCH_DIR"
 
       - name: Clean unused codebase for deleted branches
         working-directory: ${{ github.workspace }}/backend
