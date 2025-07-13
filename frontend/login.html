@@ -136,6 +136,7 @@
     </div>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="config.js"></script>
     <script>
         $(document).ready(function() {
             // Check if already logged in
@@ -149,10 +150,8 @@
             const token = localStorage.getItem('access_token');
             if (!token) return;
 
-            fetch('https://ai.nisc.com.tw/mfp_tool/api/verify-token', {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
+            fetch(`${getApiBaseUrl()}/verify-token`, {
+                headers: getAuthHeaders()
             })
             .then(response => {
                 if (response.ok) {
@@ -183,7 +182,7 @@
             showLoading(true);
             hideError();
             
-            fetch('https://ai.nisc.com.tw/mfp_tool/api/login', {
+            fetch(`${getApiBaseUrl()}/login`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

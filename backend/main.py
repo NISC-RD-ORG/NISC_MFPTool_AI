@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pathlib import Path
+from urllib.parse import unquote as urldecode
 import shutil
 import logging
 import os
@@ -296,20 +297,32 @@ async def get_tool(tool_path: str, current_user = Depends(get_current_user)):
         raise HTTPException(status_code=500, detail=f"Error retrieving tool: {str(e)}")
 
 @app.get("/gettoolimage/{tool_path:path}/{image_name}")
-async def get_tool_image(tool_path: str, image_name: str, current_user = Depends(get_current_user)):
+async def get_tool_image(tool_path: str, image_name: str):
+    """Get tool image by tool path and image name"""
     try:
+        # URL decode the parameters
+        tool_path = urldecode(tool_path)
+        image_name = urldecode(image_name)
+        
+        logger.info(f"Getting image: {image_name} for tool path: {tool_path}")
+        
         tools_path = Path(__file__).parent.parent / "tools"
-        # tool_path should be in format: model/category/subcategory/tool
+        
+        # Construct the full image path: tools/model/category/subcategory/tool/image/image_name
         image_path = tools_path / tool_path / "image" / image_name
         
+        logger.info(f"Looking for image at: {image_path}")
+        
         if not image_path.exists():
-            raise HTTPException(status_code=404, detail="Image not found")
+            logger.error(f"Image not found: {image_path}")
+            raise HTTPException(status_code=404, detail=f"Image not found: {image_path}")
         
         return FileResponse(image_path)
+        
     except Exception as e:
         logger.error(f"Error getting image {image_name} for tool {tool_path}: {e}")
         raise HTTPException(status_code=500, detail=f"Error retrieving image: {str(e)}")
-
+    
 @app.post("/login")
 async def login(login_request: LoginRequest):
     """User login endpoint"""

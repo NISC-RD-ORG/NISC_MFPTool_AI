@@ -271,6 +271,7 @@
     </div>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="config.js"></script>
     <script>
         let currentPath = [];
         let navigationHistory = [];
@@ -287,10 +288,8 @@
             }
 
             // Verify token
-            fetch('https://ai.nisc.com.tw/mfp_tool/api/verify-token', {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
+            fetch(`${getApiBaseUrl()}/verify-token`, {
+                headers: getAuthHeaders()
             })
             .then(response => {
                 if (!response.ok) {
@@ -313,20 +312,6 @@
                 localStorage.removeItem('user_info');
                 window.location.href = 'login.html';
             });
-        }
-
-        function logout() {
-            localStorage.removeItem('access_token');
-            localStorage.removeItem('user_info');
-            window.location.href = 'login.html';
-        }
-
-        function getAuthHeaders() {
-            const token = localStorage.getItem('access_token');
-            return {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            };
         }
 
         function updateBreadcrumb() {
@@ -379,7 +364,7 @@
             $('#sidebarTitle').html('<i class="fas fa-tools"></i> 機型列表');
             $('#contentTitle').text('請選擇機型');
             
-            fetch('https://ai.nisc.com.tw/mfp_tool/api/models', {
+            fetch(`${getApiBaseUrl()}/models`, {
                 headers: getAuthHeaders()
             })
             .then(response => {
@@ -403,7 +388,7 @@
             $('#sidebarTitle').html(`<i class="fas fa-list"></i> ${modelName} 分類`);
             $('#contentTitle').text(`${modelName} - 請選擇分類`);
             
-            fetch(`https://ai.nisc.com.tw/mfp_tool/api/models/${encodeURIComponent(modelName)}/categories`, {
+            fetch(`${getApiBaseUrl()}/models/${encodeURIComponent(modelName)}/categories`, {
                 headers: getAuthHeaders()
             })
             .then(response => {
@@ -427,7 +412,7 @@
             $('#sidebarTitle').html(`<i class="fas fa-list"></i> 子分類`);
             $('#contentTitle').text(`${modelName} > ${categoryName} - 請選擇子分類`);
             
-            fetch(`https://ai.nisc.com.tw/mfp_tool/api/models/${encodeURIComponent(modelName)}/categories/${encodeURIComponent(categoryName)}/subcategories`, {
+            fetch(`${getApiBaseUrl()}/models/${encodeURIComponent(modelName)}/categories/${encodeURIComponent(categoryName)}/subcategories`, {
                 headers: getAuthHeaders()
             })
             .then(response => {
@@ -451,7 +436,7 @@
             $('#sidebarTitle').html(`<i class="fas fa-wrench"></i> 工具列表`);
             $('#contentTitle').text(`${modelName} > ${categoryName} > ${subcategoryName} - 請選擇工具`);
             
-            fetch(`https://ai.nisc.com.tw/mfp_tool/api/models/${encodeURIComponent(modelName)}/categories/${encodeURIComponent(categoryName)}/subcategories/${encodeURIComponent(subcategoryName)}/tools`, {
+            fetch(`${getApiBaseUrl()}/models/${encodeURIComponent(modelName)}/categories/${encodeURIComponent(categoryName)}/subcategories/${encodeURIComponent(subcategoryName)}/tools`, {
                 headers: getAuthHeaders()
             })
             .then(response => {
@@ -537,7 +522,7 @@
             $('#contentTitle').text(displayName);
             $('#contentArea').html('<div class="tool-loading"><i class="fas fa-spinner fa-spin"></i> 載入中...</div>');
             
-            fetch(`https://ai.nisc.com.tw/mfp_tool/api/gettool/${encodeURIComponent(toolPath)}`, {
+            fetch(`${getApiBaseUrl()}/gettool/${encodeURIComponent(toolPath)}`, {
                 headers: getAuthHeaders()
             })
             .then(response => {
@@ -547,7 +532,7 @@
                 return response.json();
             })
             .then(data => {
-                displayToolContent(data);
+                displayToolContent(data, toolPath);
             })
             .catch(error => {
                 console.error('Error loading tool content:', error);
@@ -559,14 +544,26 @@
             });
         }
         
-        function displayToolContent(toolData) {
+        function displayToolContent(toolData, toolPath) {
             // Convert markdown to HTML
             let htmlContent = marked.parse(toolData.content);
             
             // Replace image paths with API endpoints
             htmlContent = htmlContent.replace(
                 /src="\.\/image\/([^"]+)"/g, 
-                `src="https://ai.nisc.com.tw/mfp_tool/api/gettoolimage/${encodeURIComponent(toolData.tool_name)}/$1"`
+                function(match, imageName) {
+                    // Clean up image name - remove any leading slashes or dots
+                    const cleanImageName = imageName.replace(/^[\.\/]+/, '');
+                    
+                    // Use the full tool path instead of just tool name
+                    const imageUrl = `${getApiBaseUrl()}/gettoolimage/${encodeURIComponent(toolPath)}/${encodeURIComponent(cleanImageName)}`;
+                    
+                    console.log('Generated image URL:', imageUrl);
+                    console.log('  - Tool path:', toolPath);
+                    console.log('  - Image name:', cleanImageName);
+                    
+                    return `src="${imageUrl}"`;
+                }
             );
             
             // Display the content
