@@ -186,14 +186,23 @@ async def init_db():
         logger.error(f"Error in init_db endpoint: {e}")
         raise HTTPException(status_code=500, detail=f"Database initialization failed: {str(e)}")
 
+def get_tools_path():
+    """Get tools directory path with fallback logic"""
+    # First try external data path
+    external_tools_path = Path("/home/user/NISC_MFPTool_Data") / "tools"
+    if external_tools_path.exists():
+        return external_tools_path
+    
+    # Fallback to local tools directory
+    local_tools_path = Path(__file__).parent.parent / "tools"
+    return local_tools_path
+
 @app.get("/listtools")
 async def list_tools(current_user = Depends(get_current_user)):
     """List all tools in hierarchical structure"""
     try:
         logger.info(f"User {current_user['account']} requesting tools list")
-        tools_path = "/home/user/NISC_MFPTool_Data" / "tools" 
-        if not tools_path.exists():
-            tools_path = Path(__file__).parent.parent / "tools"
+        tools_path = get_tools_path()
         if not tools_path.exists():
             logger.warning(f"Tools directory not found: {tools_path}")
             return {"tools": [], "message": "Tools directory not found"}
@@ -257,7 +266,7 @@ async def upload_file(file: UploadFile):
 @app.get("/gettool/{tool_path:path}")
 async def get_tool(tool_path: str, current_user = Depends(get_current_user)):
     try:
-        tools_path = Path(__file__).parent.parent / "tools"
+        tools_path = get_tools_path()
         # tool_path should be in format: model/category/subcategory/tool
         full_tool_path = tools_path / tool_path
         
@@ -308,7 +317,7 @@ async def get_tool_image(tool_path: str, image_name: str):
         
         logger.info(f"Getting image: {image_name} for tool path: {tool_path}")
         
-        tools_path = Path(__file__).parent.parent / "tools"
+        tools_path = get_tools_path()
         
         # Construct the full image path: tools/model/category/subcategory/tool/image/image_name
         image_path = tools_path / tool_path / "image" / image_name
@@ -376,7 +385,7 @@ async def verify_token(current_user = Depends(get_current_user)):
 async def list_models(current_user = Depends(get_current_user)):
     """List all available models"""
     try:
-        tools_path = Path(__file__).parent.parent / "tools"
+        tools_path = get_tools_path()
         if not tools_path.exists():
             return {"models": [], "message": "Tools directory not found"}
         
@@ -398,7 +407,7 @@ async def list_models(current_user = Depends(get_current_user)):
 async def list_categories(model_name: str, current_user = Depends(get_current_user)):
     """List categories for a specific model"""
     try:
-        tools_path = Path(__file__).parent.parent / "tools"
+        tools_path = get_tools_path()
         model_path = tools_path / model_name
         
         if not model_path.exists():
@@ -422,7 +431,7 @@ async def list_categories(model_name: str, current_user = Depends(get_current_us
 async def list_subcategories(model_name: str, category_name: str, current_user = Depends(get_current_user)):
     """List subcategories for a specific model and category"""
     try:
-        tools_path = Path(__file__).parent.parent / "tools"
+        tools_path = get_tools_path()
         category_path = tools_path / model_name / category_name
         
         if not category_path.exists():
@@ -446,7 +455,7 @@ async def list_subcategories(model_name: str, category_name: str, current_user =
 async def list_tools_in_subcategory(model_name: str, category_name: str, subcategory_name: str, current_user = Depends(get_current_user)):
     """List tools in a specific subcategory"""
     try:
-        tools_path = Path(__file__).parent.parent / "tools"
+        tools_path = get_tools_path()
         subcategory_path = tools_path / model_name / category_name / subcategory_name
         
         if not subcategory_path.exists():
