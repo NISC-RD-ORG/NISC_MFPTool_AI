@@ -191,7 +191,9 @@ async def list_tools(current_user = Depends(get_current_user)):
     """List all tools in hierarchical structure"""
     try:
         logger.info(f"User {current_user['account']} requesting tools list")
-        tools_path = Path(__file__).parent.parent / "tools"
+        tools_path = "/home/user/NISC_MFPTool_Data" / "tools" 
+        if not tools_path.exists():
+            tools_path = Path(__file__).parent.parent / "tools"
         if not tools_path.exists():
             logger.warning(f"Tools directory not found: {tools_path}")
             return {"tools": [], "message": "Tools directory not found"}
