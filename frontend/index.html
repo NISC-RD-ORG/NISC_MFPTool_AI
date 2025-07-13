@@ -342,7 +342,7 @@
             // Convert markdown to HTML
             let htmlContent = marked.parse(toolData.content);
             
-            // Replace image paths with API endpoints
+            // Replace image paths with API endpoints (supporting new path structure)
             htmlContent = htmlContent.replace(
                 /src="\.\/image\/([^"]+)"/g, 
                 `src="https://ai.nisc.com.tw/mfp_tool/api/gettoolimage/${encodeURIComponent(toolData.tool_name)}/$1"`

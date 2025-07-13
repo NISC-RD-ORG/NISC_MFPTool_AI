@@ -174,21 +174,43 @@ async def init_db():
 
 @app.get("/listtools")
 async def list_tools(current_user = Depends(get_current_user)):
+    """List all tools in hierarchical structure"""
     try:
         tools_path = Path(__file__).parent.parent / "tools"
         if not tools_path.exists():
             return {"tools": [], "message": "Tools directory not found"}
         
-        tools = []
-        for item in tools_path.iterdir():
-            if item.is_dir():
-                tools.append({
-                    "name": item.name,
-                    "display_name": item.name  # You can modify this for better display names
-                })
+        all_tools = []
+        # Traverse the new structure: model/category/subcategory/tool
+        for model_dir in tools_path.iterdir():
+            if not model_dir.is_dir():
+                continue
+                
+            for category_dir in model_dir.iterdir():
+                if not category_dir.is_dir():
+                    continue
+                    
+                for subcategory_dir in category_dir.iterdir():
+                    if not subcategory_dir.is_dir():
+                        continue
+                        
+                    for tool_dir in subcategory_dir.iterdir():
+                        if tool_dir.is_dir():
+                            # Check if this directory contains content.md
+                            content_file = tool_dir / "content.md"
+                            if content_file.exists():
+                                tool_path = f"{model_dir.name}/{category_dir.name}/{subcategory_dir.name}/{tool_dir.name}"
+                                all_tools.append({
+                                    "name": tool_path,
+                                    "display_name": f"[{model_dir.name}] {tool_dir.name}",
+                                    "model": model_dir.name,
+                                    "category": category_dir.name,
+                                    "subcategory": subcategory_dir.name,
+                                    "tool": tool_dir.name
+                                })
         
-        logger.info(f"Found {len(tools)} tools for user {current_user['account']}")
-        return {"tools": tools, "count": len(tools)}
+        logger.info(f"Found {len(all_tools)} tools for user {current_user['account']}")
+        return {"tools": all_tools, "count": len(all_tools)}
     except Exception as e:
         logger.error(f"Error listing tools: {e}")
         return {"tools": [], "message": "Error listing tools", "error": str(e)}
@@ -211,17 +233,18 @@ async def upload_file(file: UploadFile):
         logger.error(f"Error uploading file: {e}")
         return {"message": "File upload failed", "error": str(e)}
 
-@app.get("/gettool/{tool_name}")
-async def get_tool(tool_name: str, current_user = Depends(get_current_user)):
+@app.get("/gettool/{tool_path:path}")
+async def get_tool(tool_path: str, current_user = Depends(get_current_user)):
     try:
         tools_path = Path(__file__).parent.parent / "tools"
-        tool_path = tools_path / tool_name
+        # tool_path should be in format: model/category/subcategory/tool
+        full_tool_path = tools_path / tool_path
         
-        if not tool_path.exists():
+        if not full_tool_path.exists():
             raise HTTPException(status_code=404, detail="Tool not found")
         
         # Read content.md
-        content_file = tool_path / "content.md"
+        content_file = full_tool_path / "content.md"
         if not content_file.exists():
             raise HTTPException(status_code=404, detail="Content file not found")
         
@@ -229,43 +252,44 @@ async def get_tool(tool_name: str, current_user = Depends(get_current_user)):
             content = f.read()
         
         # Get metadata if exists
-        metadata_file = tool_path / "metadata.json"
+        metadata_file = full_tool_path / "metadata.json"
         metadata = {}
         if metadata_file.exists():
             with metadata_file.open("r", encoding="utf-8") as f:
                 metadata = json.load(f)
         
         # Get list of images
-        images_path = tool_path / "image"
+        images_path = full_tool_path / "image"
         images = []
         if images_path.exists():
             for img_file in images_path.iterdir():
                 if img_file.is_file() and img_file.suffix.lower() in ['.png', '.jpg', '.jpeg', '.gif', '.bmp']:
                     images.append(img_file.name)
         
-        logger.info(f"Retrieved tool: {tool_name} for user {current_user['account']}")
+        logger.info(f"Retrieved tool: {tool_path} for user {current_user['account']}")
         return {
-            "tool_name": tool_name,
+            "tool_name": tool_path,
             "content": content,
             "metadata": metadata,
             "images": images
         }
     except Exception as e:
-        logger.error(f"Error getting tool {tool_name}: {e}")
+        logger.error(f"Error getting tool {tool_path}: {e}")
         raise HTTPException(status_code=500, detail=f"Error retrieving tool: {str(e)}")
 
-@app.get("/gettoolimage/{tool_name}/{image_name}")
-async def get_tool_image(tool_name: str, image_name: str, current_user = Depends(get_current_user)):
+@app.get("/gettoolimage/{tool_path:path}/{image_name}")
+async def get_tool_image(tool_path: str, image_name: str, current_user = Depends(get_current_user)):
     try:
         tools_path = Path(__file__).parent.parent / "tools"
-        image_path = tools_path / tool_name / "image" / image_name
+        # tool_path should be in format: model/category/subcategory/tool
+        image_path = tools_path / tool_path / "image" / image_name
         
         if not image_path.exists():
             raise HTTPException(status_code=404, detail="Image not found")
         
         return FileResponse(image_path)
     except Exception as e:
-        logger.error(f"Error getting image {image_name} for tool {tool_name}: {e}")
+        logger.error(f"Error getting image {image_name} for tool {tool_path}: {e}")
         raise HTTPException(status_code=500, detail=f"Error retrieving image: {str(e)}")
 
 @app.post("/login")
@@ -314,3 +338,101 @@ async def verify_token(current_user = Depends(get_current_user)):
             "name": current_user["name"]
         }
     }
+
+@app.get("/models")
+async def list_models(current_user = Depends(get_current_user)):
+    """List all available models"""
+    try:
+        tools_path = Path(__file__).parent.parent / "tools"
+        if not tools_path.exists():
+            return {"models": [], "message": "Tools directory not found"}
+        
+        models = []
+        for item in tools_path.iterdir():
+            if item.is_dir():
+                models.append({
+                    "name": item.name,
+                    "display_name": item.name
+                })
+        
+        logger.info(f"Found {len(models)} models for user {current_user['account']}")
+        return {"models": models, "count": len(models)}
+    except Exception as e:
+        logger.error(f"Error listing models: {e}")
+        return {"models": [], "message": "Error listing models", "error": str(e)}
+
+@app.get("/models/{model_name}/categories")
+async def list_categories(model_name: str, current_user = Depends(get_current_user)):
+    """List categories for a specific model"""
+    try:
+        tools_path = Path(__file__).parent.parent / "tools"
+        model_path = tools_path / model_name
+        
+        if not model_path.exists():
+            raise HTTPException(status_code=404, detail="Model not found")
+        
+        categories = []
+        for item in model_path.iterdir():
+            if item.is_dir():
+                categories.append({
+                    "name": item.name,
+                    "display_name": item.name
+                })
+        
+        logger.info(f"Found {len(categories)} categories for model {model_name}")
+        return {"categories": categories, "count": len(categories)}
+    except Exception as e:
+        logger.error(f"Error listing categories for model {model_name}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving categories: {str(e)}")
+
+@app.get("/models/{model_name}/categories/{category_name}/subcategories")
+async def list_subcategories(model_name: str, category_name: str, current_user = Depends(get_current_user)):
+    """List subcategories for a specific model and category"""
+    try:
+        tools_path = Path(__file__).parent.parent / "tools"
+        category_path = tools_path / model_name / category_name
+        
+        if not category_path.exists():
+            raise HTTPException(status_code=404, detail="Category not found")
+        
+        subcategories = []
+        for item in category_path.iterdir():
+            if item.is_dir():
+                subcategories.append({
+                    "name": item.name,
+                    "display_name": item.name
+                })
+        
+        logger.info(f"Found {len(subcategories)} subcategories for {model_name}/{category_name}")
+        return {"subcategories": subcategories, "count": len(subcategories)}
+    except Exception as e:
+        logger.error(f"Error listing subcategories: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving subcategories: {str(e)}")
+
+@app.get("/models/{model_name}/categories/{category_name}/subcategories/{subcategory_name}/tools")
+async def list_tools_in_subcategory(model_name: str, category_name: str, subcategory_name: str, current_user = Depends(get_current_user)):
+    """List tools in a specific subcategory"""
+    try:
+        tools_path = Path(__file__).parent.parent / "tools"
+        subcategory_path = tools_path / model_name / category_name / subcategory_name
+        
+        if not subcategory_path.exists():
+            raise HTTPException(status_code=404, detail="Subcategory not found")
+        
+        tools = []
+        for item in subcategory_path.iterdir():
+            if item.is_dir():
+                # Check if this directory contains content.md
+                content_file = item / "content.md"
+                if content_file.exists():
+                    tools.append({
+                        "name": item.name,
+                        "display_name": item.name,
+                        "path": f"{model_name}/{category_name}/{subcategory_name}/{item.name}"
+                    })
+        
+        logger.info(f"Found {len(tools)} tools in {model_name}/{category_name}/{subcategory_name}")
+        return {"tools": tools, "count": len(tools)}
+    except Exception as e:
+        logger.error(f"Error listing tools: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving tools: {str(e)}")

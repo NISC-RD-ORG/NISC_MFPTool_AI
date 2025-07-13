@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MFP Tool Interface</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            background-color: #f4f4f4;
+            display: flex;
+        }
+        
+        .sidebar {
+            width: 25%;
+            background: #fff;
+            border-right: 1px solid #ddd;
+            padding: 20px;
+            overflow-y: auto;
+            box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+        }
+        
+        .sidebar h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            color: #333;
+            border-bottom: 2px solid #007BFF;
+            padding-bottom: 10px;
+        }
+        
+        .user-info {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border: 1px solid #e9ecef;
+        }
+        
+        .user-info .user-name {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+        
+        .logout-button {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        
+        .logout-button:hover {
+            background: #c82333;
+        }
+        
+        .navigation {
+            margin-bottom: 20px;
+        }
+        
+        .breadcrumb {
+            padding: 10px;
+            background: #e9ecef;
+            border-radius: 5px;
+            margin-bottom: 10px;
+            font-size: 14px;
+        }
+        
+        .breadcrumb a {
+            color: #007BFF;
+            text-decoration: none;
+            cursor: pointer;
+        }
+        
+        .breadcrumb a:hover {
+            text-decoration: underline;
+        }
+        
+        .list-container {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .list-item {
+            padding: 12px;
+            margin-bottom: 5px;
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            word-wrap: break-word;
+            font-size: 14px;
+        }
+        
+        .list-item:hover {
+            background: #e9ecef;
+            border-color: #007BFF;
+            transform: translateY(-1px);
+        }
+        
+        .list-item.selected {
+            background: #007BFF;
+            color: white;
+            border-color: #0056b3;
+        }
+        
+        .list-item.folder {
+            background: #fff3cd;
+            border-color: #ffeaa7;
+        }
+        
+        .list-item.folder:hover {
+            background: #ffeaa7;
+        }
+        
+        .list-item.tool {
+            background: #d4edda;
+            border-color: #c3e6cb;
+        }
+        
+        .list-item.tool:hover {
+            background: #c3e6cb;
+        }
+        
+        .main-content {
+            width: 75%;
+            padding: 20px;
+            background: white;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .content-header {
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .content-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            color: #666;
+            font-size: 16px;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        
+        .markdown-content {
+            line-height: 1.6;
+            max-width: none;
+        }
+        
+        .markdown-content h1, .markdown-content h2, .markdown-content h3 {
+            color: #333;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        
+        .markdown-content h1 {
+            border-bottom: 2px solid #007BFF;
+            padding-bottom: 10px;
+        }
+        
+        .markdown-content h2 {
+            border-bottom: 1px solid #ddd;
+            padding-bottom: 5px;
+        }
+        
+        .markdown-content img {
+            max-width: 100%;
+            height: auto;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .markdown-content ol, .markdown-content ul {
+            padding-left: 30px;
+        }
+        
+        .markdown-content li {
+            margin-bottom: 5px;
+        }
+        
+        .tool-loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 200px;
+            color: #007BFF;
+            font-size: 18px;
+        }
+        
+        .tool-error {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 200px;
+            color: #dc3545;
+            font-size: 18px;
+        }
+        
+        .loading {
+            color: #007BFF;
+        }
+        
+        .error {
+            color: #dc3545;
+        }
+        
+        .back-button {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-bottom: 15px;
+        }
+        
+        .back-button:hover {
+            background: #545b62;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="user-info" id="userInfo">
+            <div class="user-name" id="userName">載入中...</div>
+            <button class="logout-button" onclick="logout()">
+                <i class="fas fa-sign-out-alt"></i> 登出
+            </button>
+        </div>
+        
+        <div class="navigation">
+            <div class="breadcrumb" id="breadcrumb">
+                <i class="fas fa-home"></i> 首頁
+            </div>
+            <button class="back-button" id="backButton" onclick="goBack()" style="display: none;">
+                <i class="fas fa-arrow-left"></i> 返回
+            </button>
+        </div>
+        
+        <h2 id="sidebarTitle"><i class="fas fa-tools"></i> 機型列表</h2>
+        <ul class="list-container" id="listContainer">
+            <li class="loading">載入中...</li>
+        </ul>
+    </div>
+    
+    <div class="main-content">
+        <div class="content-header">
+            <h1 id="contentTitle">請選擇機型和工具</h1>
+        </div>
+        <div class="content-area" id="contentArea">
+            <div style="display: flex; align-items: center; justify-content: center; height: 200px;">
+                請從左側列表中選擇機型，然後瀏覽到具體的工具來查看詳細資訊
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        let currentPath = [];
+        let navigationHistory = [];
+
+        $(document).ready(function() {
+            checkAuth();
+        });
+
+        function checkAuth() {
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                window.location.href = 'login.html';
+                return;
+            }
+
+            // Verify token
+            fetch('https://ai.nisc.com.tw/mfp_tool/api/verify-token', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Token invalid');
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Update user info
+                const userInfo = data.user;
+                $('#userName').text(userInfo.name);
+                localStorage.setItem('user_info', JSON.stringify(userInfo));
+                
+                // Load models
+                loadModels();
+            })
+            .catch(error => {
+                console.error('Auth check failed:', error);
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('user_info');
+                window.location.href = 'login.html';
+            });
+        }
+
+        function logout() {
+            localStorage.removeItem('access_token');
+            localStorage.removeItem('user_info');
+            window.location.href = 'login.html';
+        }
+
+        function getAuthHeaders() {
+            const token = localStorage.getItem('access_token');
+            return {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            };
+        }
+
+        function updateBreadcrumb() {
+            let breadcrumbHtml = '<i class="fas fa-home"></i> ';
+            if (currentPath.length === 0) {
+                breadcrumbHtml += '首頁';
+            } else {
+                breadcrumbHtml += '<a onclick="goToLevel(0)">首頁</a>';
+                for (let i = 0; i < currentPath.length; i++) {
+                    breadcrumbHtml += ' > ';
+                    if (i === currentPath.length - 1) {
+                        breadcrumbHtml += currentPath[i];
+                    } else {
+                        breadcrumbHtml += `<a onclick="goToLevel(${i + 1})">${currentPath[i]}</a>`;
+                    }
+                }
+            }
+            $('#breadcrumb').html(breadcrumbHtml);
+            
+            // Show/hide back button
+            if (currentPath.length > 0) {
+                $('#backButton').show();
+            } else {
+                $('#backButton').hide();
+            }
+        }
+
+        function goToLevel(level) {
+            currentPath = currentPath.slice(0, level);
+            if (level === 0) {
+                loadModels();
+            } else if (level === 1) {
+                loadCategories(currentPath[0]);
+            } else if (level === 2) {
+                loadSubcategories(currentPath[0], currentPath[1]);
+            } else if (level === 3) {
+                loadTools(currentPath[0], currentPath[1], currentPath[2]);
+            }
+        }
+
+        function goBack() {
+            if (currentPath.length > 0) {
+                goToLevel(currentPath.length - 1);
+            }
+        }
+
+        function loadModels() {
+            currentPath = [];
+            updateBreadcrumb();
+            $('#sidebarTitle').html('<i class="fas fa-tools"></i> 機型列表');
+            $('#contentTitle').text('請選擇機型');
+            
+            fetch('https://ai.nisc.com.tw/mfp_tool/api/models', {
+                headers: getAuthHeaders()
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to load models');
+                }
+                return response.json();
+            })
+            .then(data => {
+                displayList(data.models || [], 'model');
+            })
+            .catch(error => {
+                console.error('Error loading models:', error);
+                handleError(error);
+            });
+        }
+
+        function loadCategories(modelName) {
+            currentPath = [modelName];
+            updateBreadcrumb();
+            $('#sidebarTitle').html(`<i class="fas fa-list"></i> ${modelName} 分類`);
+            $('#contentTitle').text(`${modelName} - 請選擇分類`);
+            
+            fetch(`https://ai.nisc.com.tw/mfp_tool/api/models/${encodeURIComponent(modelName)}/categories`, {
+                headers: getAuthHeaders()
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to load categories');
+                }
+                return response.json();
+            })
+            .then(data => {
+                displayList(data.categories || [], 'category');
+            })
+            .catch(error => {
+                console.error('Error loading categories:', error);
+                handleError(error);
+            });
+        }
+
+        function loadSubcategories(modelName, categoryName) {
+            currentPath = [modelName, categoryName];
+            updateBreadcrumb();
+            $('#sidebarTitle').html(`<i class="fas fa-list"></i> 子分類`);
+            $('#contentTitle').text(`${modelName} > ${categoryName} - 請選擇子分類`);
+            
+            fetch(`https://ai.nisc.com.tw/mfp_tool/api/models/${encodeURIComponent(modelName)}/categories/${encodeURIComponent(categoryName)}/subcategories`, {
+                headers: getAuthHeaders()
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to load subcategories');
+                }
+                return response.json();
+            })
+            .then(data => {
+                displayList(data.subcategories || [], 'subcategory');
+            })
+            .catch(error => {
+                console.error('Error loading subcategories:', error);
+                handleError(error);
+            });
+        }
+
+        function loadTools(modelName, categoryName, subcategoryName) {
+            currentPath = [modelName, categoryName, subcategoryName];
+            updateBreadcrumb();
+            $('#sidebarTitle').html(`<i class="fas fa-wrench"></i> 工具列表`);
+            $('#contentTitle').text(`${modelName} > ${categoryName} > ${subcategoryName} - 請選擇工具`);
+            
+            fetch(`https://ai.nisc.com.tw/mfp_tool/api/models/${encodeURIComponent(modelName)}/categories/${encodeURIComponent(categoryName)}/subcategories/${encodeURIComponent(subcategoryName)}/tools`, {
+                headers: getAuthHeaders()
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to load tools');
+                }
+                return response.json();
+            })
+            .then(data => {
+                displayList(data.tools || [], 'tool');
+            })
+            .catch(error => {
+                console.error('Error loading tools:', error);
+                handleError(error);
+            });
+        }
+
+        function displayList(items, type) {
+            const listContainer = $('#listContainer');
+            listContainer.empty();
+            
+            if (items.length > 0) {
+                items.forEach(item => {
+                    const icon = getIconForType(type);
+                    const listItem = $(`
+                        <li class="list-item ${type}" data-name="${item.name}">
+                            <i class="${icon}"></i> ${item.display_name || item.name}
+                        </li>
+                    `);
+                    
+                    listItem.on('click', function() {
+                        handleItemClick(item, type);
+                    });
+                    
+                    listContainer.append(listItem);
+                });
+            } else {
+                listContainer.append(`<li class="error">沒有找到${getTypeDisplayName(type)}</li>`);
+            }
+        }
+
+        function getIconForType(type) {
+            switch(type) {
+                case 'model': return 'fas fa-desktop';
+                case 'category': return 'fas fa-folder';
+                case 'subcategory': return 'fas fa-folder-open';
+                case 'tool': return 'fas fa-wrench';
+                default: return 'fas fa-file';
+            }
+        }
+
+        function getTypeDisplayName(type) {
+            switch(type) {
+                case 'model': return '機型';
+                case 'category': return '分類';
+                case 'subcategory': return '子分類';
+                case 'tool': return '工具';
+                default: return '項目';
+            }
+        }
+
+        function handleItemClick(item, type) {
+            $('.list-item').removeClass('selected');
+            $(`.list-item[data-name="${item.name}"]`).addClass('selected');
+            
+            switch(type) {
+                case 'model':
+                    loadCategories(item.name);
+                    break;
+                case 'category':
+                    loadSubcategories(currentPath[0], item.name);
+                    break;
+                case 'subcategory':
+                    loadTools(currentPath[0], currentPath[1], item.name);
+                    break;
+                case 'tool':
+                    loadToolContent(item.path || `${currentPath.join('/')}/${item.name}`, item.display_name || item.name);
+                    break;
+            }
+        }
+
+        function loadToolContent(toolPath, displayName) {
+            $('#contentTitle').text(displayName);
+            $('#contentArea').html('<div class="tool-loading"><i class="fas fa-spinner fa-spin"></i> 載入中...</div>');
+            
+            fetch(`https://ai.nisc.com.tw/mfp_tool/api/gettool/${encodeURIComponent(toolPath)}`, {
+                headers: getAuthHeaders()
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                displayToolContent(data);
+            })
+            .catch(error => {
+                console.error('Error loading tool content:', error);
+                if (error.message.includes('401')) {
+                    logout();
+                } else {
+                    $('#contentArea').html('<div class="tool-error"><i class="fas fa-exclamation-triangle"></i> 載入工具內容失敗</div>');
+                }
+            });
+        }
+        
+        function displayToolContent(toolData) {
+            // Convert markdown to HTML
+            let htmlContent = marked.parse(toolData.content);
+            
+            // Replace image paths with API endpoints
+            htmlContent = htmlContent.replace(
+                /src="\.\/image\/([^"]+)"/g, 
+                `src="https://ai.nisc.com.tw/mfp_tool/api/gettoolimage/${encodeURIComponent(toolData.tool_name)}/$1"`
+            );
+            
+            // Display the content
+            $('#contentArea').html(`
+                <div class="markdown-content">
+                    ${htmlContent}
+                </div>
+            `);
+        }
+
+        function handleError(error) {
+            if (error.message.includes('401')) {
+                logout();
+            } else {
+                $('#listContainer').html('<li class="error">載入失敗</li>');
+            }
+        }
+    </script>
+</body>
+</html>
