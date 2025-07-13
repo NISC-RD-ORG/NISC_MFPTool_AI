@@ -1,14 +1,18 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, status
 from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pathlib import Path
 import shutil
 import logging
 import os
 import json
 import sqlite3
-import hashlib
+from datetime import datetime, timedelta
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+from pydantic import BaseModel
 
 app = FastAPI()
 
@@ -25,8 +29,30 @@ app.add_middleware(
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# JWT Configuration
+SECRET_KEY = "your-secret-key-change-this-in-production"  # In production, use environment variable
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 hours
+
+# Password hashing
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Security
+security = HTTPBearer()
+
 # Database configuration
 DB_PATH = Path(__file__).parent / "mfptool.db"
+
+# Pydantic models
+class LoginRequest(BaseModel):
+    account: str
+    password: str
+
+class UserResponse(BaseModel):
+    uid: int
+    account: str
+    type: int
+    name: str
 
 def get_db_connection():
     """Get database connection"""
@@ -35,8 +61,52 @@ def get_db_connection():
     return conn
 
 def hash_password(password: str) -> str:
-    """Hash password using SHA256"""
-    return hashlib.sha256(password.encode()).hexdigest()
+    """Hash password using bcrypt"""
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify password"""
+    return pwd_context.verify(plain_password, hashed_password)
+
+def create_access_token(data: dict, expires_delta: timedelta = None):
+    """Create JWT access token"""
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+def get_user_by_account(account: str):
+    """Get user by account from database"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE account = ?", (account,))
+    user = cursor.fetchone()
+    conn.close()
+    return user
+
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    """Get current user from JWT token"""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        account: str = payload.get("sub")
+        if account is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    
+    user = get_user_by_account(account)
+    if user is None:
+        raise credentials_exception
+    return user
 
 def init_database():
     """Initialize database with users table and default admin user"""
@@ -103,7 +173,7 @@ async def init_db():
         raise HTTPException(status_code=500, detail=f"Database initialization failed: {str(e)}")
 
 @app.get("/listtools")
-async def list_tools():
+async def list_tools(current_user = Depends(get_current_user)):
     try:
         tools_path = Path(__file__).parent.parent / "tools"
         if not tools_path.exists():
@@ -117,7 +187,7 @@ async def list_tools():
                     "display_name": item.name  # You can modify this for better display names
                 })
         
-        logger.info(f"Found {len(tools)} tools")
+        logger.info(f"Found {len(tools)} tools for user {current_user['account']}")
         return {"tools": tools, "count": len(tools)}
     except Exception as e:
         logger.error(f"Error listing tools: {e}")
@@ -142,7 +212,7 @@ async def upload_file(file: UploadFile):
         return {"message": "File upload failed", "error": str(e)}
 
 @app.get("/gettool/{tool_name}")
-async def get_tool(tool_name: str):
+async def get_tool(tool_name: str, current_user = Depends(get_current_user)):
     try:
         tools_path = Path(__file__).parent.parent / "tools"
         tool_path = tools_path / tool_name
@@ -173,7 +243,7 @@ async def get_tool(tool_name: str):
                 if img_file.is_file() and img_file.suffix.lower() in ['.png', '.jpg', '.jpeg', '.gif', '.bmp']:
                     images.append(img_file.name)
         
-        logger.info(f"Retrieved tool: {tool_name}")
+        logger.info(f"Retrieved tool: {tool_name} for user {current_user['account']}")
         return {
             "tool_name": tool_name,
             "content": content,
@@ -185,7 +255,7 @@ async def get_tool(tool_name: str):
         raise HTTPException(status_code=500, detail=f"Error retrieving tool: {str(e)}")
 
 @app.get("/gettoolimage/{tool_name}/{image_name}")
-async def get_tool_image(tool_name: str, image_name: str):
+async def get_tool_image(tool_name: str, image_name: str, current_user = Depends(get_current_user)):
     try:
         tools_path = Path(__file__).parent.parent / "tools"
         image_path = tools_path / tool_name / "image" / image_name
@@ -197,3 +267,50 @@ async def get_tool_image(tool_name: str, image_name: str):
     except Exception as e:
         logger.error(f"Error getting image {image_name} for tool {tool_name}: {e}")
         raise HTTPException(status_code=500, detail=f"Error retrieving image: {str(e)}")
+
+@app.post("/login")
+async def login(login_request: LoginRequest):
+    """User login endpoint"""
+    try:
+        user = get_user_by_account(login_request.account)
+        if not user or not verify_password(login_request.password, user["password"]):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect account or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": user["account"]}, expires_delta=access_token_expires
+        )
+        
+        logger.info(f"User {user['account']} logged in successfully")
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "uid": user["uid"],
+                "account": user["account"],
+                "type": user["type"],
+                "name": user["name"]
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/verify-token")
+async def verify_token(current_user = Depends(get_current_user)):
+    """Verify JWT token and return user info"""
+    return {
+        "valid": True,
+        "user": {
+            "uid": current_user["uid"],
+            "account": current_user["account"],
+            "type": current_user["type"],
+            "name": current_user["name"]
+        }
+    }

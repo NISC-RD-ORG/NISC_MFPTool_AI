@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MFP Tool - 登入</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .login-container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            width: 400px;
+            max-width: 90%;
+        }
+        
+        .login-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .login-header h1 {
+            color: #333;
+            margin: 0;
+            font-size: 28px;
+        }
+        
+        .login-header p {
+            color: #666;
+            margin: 10px 0 0 0;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+            font-weight: bold;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: #007BFF;
+            box-shadow: 0 0 5px rgba(0, 123, 255, 0.3);
+        }
+        
+        .login-button {
+            width: 100%;
+            padding: 12px;
+            background: #007BFF;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        
+        .login-button:hover {
+            background: #0056b3;
+        }
+        
+        .login-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        
+        .error-message {
+            color: #dc3545;
+            text-align: center;
+            margin-top: 15px;
+            padding: 10px;
+            background: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 5px;
+        }
+        
+        .loading {
+            text-align: center;
+            margin-top: 15px;
+            color: #007BFF;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <h1><i class="fas fa-tools"></i> MFP Tool</h1>
+            <p>請登入以使用工具</p>
+        </div>
+        
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="account">帳號</label>
+                <input type="text" id="account" name="account" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">密碼</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            
+            <button type="submit" class="login-button" id="loginButton">
+                <i class="fas fa-sign-in-alt"></i> 登入
+            </button>
+        </form>
+        
+        <div id="errorMessage" class="error-message" style="display: none;"></div>
+        <div id="loadingMessage" class="loading" style="display: none;">
+            <i class="fas fa-spinner fa-spin"></i> 登入中...
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            // Check if already logged in
+            const token = localStorage.getItem('access_token');
+            if (token) {
+                verifyTokenAndRedirect();
+            }
+        });
+
+        function verifyTokenAndRedirect() {
+            const token = localStorage.getItem('access_token');
+            if (!token) return;
+
+            fetch('https://ai.nisc.com.tw/mfp_tool/api/verify-token', {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            })
+            .then(response => {
+                if (response.ok) {
+                    window.location.href = 'index.html';
+                } else {
+                    localStorage.removeItem('access_token');
+                    localStorage.removeItem('user_info');
+                }
+            })
+            .catch(error => {
+                console.error('Token verification failed:', error);
+                localStorage.removeItem('access_token');
+                localStorage.removeItem('user_info');
+            });
+        }
+
+        $('#loginForm').on('submit', function(e) {
+            e.preventDefault();
+            
+            const account = $('#account').val();
+            const password = $('#password').val();
+            
+            if (!account || !password) {
+                showError('請輸入帳號和密碼');
+                return;
+            }
+            
+            showLoading(true);
+            hideError();
+            
+            fetch('https://ai.nisc.com.tw/mfp_tool/api/login', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    account: account,
+                    password: password
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                showLoading(false);
+                
+                if (data.access_token) {
+                    // Save token and user info
+                    localStorage.setItem('access_token', data.access_token);
+                    localStorage.setItem('user_info', JSON.stringify(data.user));
+                    
+                    // Redirect to main page
+                    window.location.href = 'index.html';
+                } else {
+                    showError(data.detail || '登入失敗');
+                }
+            })
+            .catch(error => {
+                showLoading(false);
+                console.error('Login error:', error);
+                showError('登入時發生錯誤，請稍後再試');
+            });
+        });
+
+        function showLoading(show) {
+            const loadingElement = $('#loadingMessage');
+            const buttonElement = $('#loginButton');
+            
+            if (show) {
+                loadingElement.show();
+                buttonElement.prop('disabled', true);
+            } else {
+                loadingElement.hide();
+                buttonElement.prop('disabled', false);
+            }
+        }
+
+        function showError(message) {
+            const errorElement = $('#errorMessage');
+            errorElement.text(message).show();
+        }
+
+        function hideError() {
+            $('#errorMessage').hide();
+        }
+    </script>
+</body>
+</html>
