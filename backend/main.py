@@ -95,17 +95,30 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    
     try:
+        logger.info(f"Attempting to decode JWT token")
         payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
         account: str = payload.get("sub")
+        logger.info(f"JWT decoded successfully, account: {account}")
+        
         if account is None:
+            logger.error("No account found in JWT payload")
             raise credentials_exception
-    except JWTError:
+            
+    except JWTError as e:
+        logger.error(f"JWT decode error: {e}")
+        raise credentials_exception
+    except Exception as e:
+        logger.error(f"Unexpected error in JWT processing: {e}")
         raise credentials_exception
     
     user = get_user_by_account(account)
     if user is None:
+        logger.error(f"User not found in database: {account}")
         raise credentials_exception
+        
+    logger.info(f"User authenticated successfully: {account}")
     return user
 
 def init_database():
@@ -176,8 +189,10 @@ async def init_db():
 async def list_tools(current_user = Depends(get_current_user)):
     """List all tools in hierarchical structure"""
     try:
+        logger.info(f"User {current_user['account']} requesting tools list")
         tools_path = Path(__file__).parent.parent / "tools"
         if not tools_path.exists():
+            logger.warning(f"Tools directory not found: {tools_path}")
             return {"tools": [], "message": "Tools directory not found"}
         
         all_tools = []
@@ -211,9 +226,12 @@ async def list_tools(current_user = Depends(get_current_user)):
         
         logger.info(f"Found {len(all_tools)} tools for user {current_user['account']}")
         return {"tools": all_tools, "count": len(all_tools)}
+    except HTTPException:
+        # Re-raise HTTP exceptions (like 401)
+        raise
     except Exception as e:
         logger.error(f"Error listing tools: {e}")
-        return {"tools": [], "message": "Error listing tools", "error": str(e)}
+        raise HTTPException(status_code=500, detail=f"Error listing tools: {str(e)}")
 
 @app.get("/hello")
 async def get_hello():
