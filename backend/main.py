@@ -12,7 +12,8 @@ import json
 import sqlite3
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
-from passlib.context import CryptContext
+import bcrypt
+# from passlib.context import CryptContext  # Commented out due to compatibility issues
 from pydantic import BaseModel
 
 app = FastAPI()
@@ -35,8 +36,14 @@ SECRET_KEY = "your-secret-key-change-this-in-production"  # In production, use e
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 480  # 8 hours
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Password hashing using bcrypt directly
+def hash_password(password: str) -> str:
+    """Hash a password using bcrypt"""
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+def verify_password_bcrypt(plain_password: str, hashed_password: str) -> bool:
+    """Verify a password against its hash using bcrypt"""
+    return bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
 
 # Security
 security = HTTPBearer()
@@ -55,21 +62,64 @@ class UserResponse(BaseModel):
     type: int
     name: str
 
+class UserCreateRequest(BaseModel):
+    account: str
+    password: str
+    type: int
+    name: str
+
+class UserUpdateRequest(BaseModel):
+    account: str = None
+    password: str = None
+    type: int = None
+    name: str = None
+
 def get_db_connection():
     """Get database connection"""
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
-def hash_password(password: str) -> str:
+def get_password_hash(password: str) -> str:
     """Hash password using bcrypt"""
-    return pwd_context.hash(password)
+    return hash_password(password)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify password"""
-    return pwd_context.verify(plain_password, hashed_password)
+    """Verify password using bcrypt"""
+    try:
+        logger.info(f"Verifying password... Plain length: {len(plain_password)}, Hash: {hashed_password[:20]}...")
+        result = bcrypt.checkpw(plain_password.encode('utf-8'), hashed_password.encode('utf-8'))
+        logger.info(f"Password verification result: {result}")
+        return result
+    except Exception as e:
+        logger.error(f"Password verification error: {e}")
+        return False
+
+def debug_database_users():
+    """Debug function to check database users"""
+    try:
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("SELECT account, password, type FROM users")
+        users = cursor.fetchall()
+        conn.close()
+        
+        logger.info("=== DATABASE USERS DEBUG ===")
+        for account, password_hash, user_type in users:
+            logger.info(f"User: {account}, Type: {user_type}, Hash: {password_hash[:20]}...")
+            
+            # Test password verification
+            test_password = "admin123" if account == "admin" else "unknown"
+            is_valid = bcrypt.checkpw(test_password.encode('utf-8'), password_hash.encode('utf-8'))
+            logger.info(f"  Testing password '{test_password}': {is_valid}")
+        
+        return users
+    except Exception as e:
+        logger.error(f"Database debug error: {e}")
+        return []
 
 def create_access_token(data: dict, expires_delta: timedelta = None):
+    """Create JWT access token"""
     """Create JWT access token"""
     to_encode = data.copy()
     if expires_delta:
@@ -338,8 +388,24 @@ async def get_tool_image(tool_path: str, image_name: str):
 async def login(login_request: LoginRequest):
     """User login endpoint"""
     try:
+        logger.info(f"Login attempt for account: {login_request.account}")
+        
         user = get_user_by_account(login_request.account)
-        if not user or not verify_password(login_request.password, user["password"]):
+        if not user:
+            logger.warning(f"User not found: {login_request.account}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Incorrect account or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        logger.info(f"User found: {user['account']}, checking password...")
+        
+        password_valid = verify_password(login_request.password, user["password"])
+        logger.info(f"Password verification result: {password_valid}")
+        
+        if not password_valid:
+            logger.warning(f"Invalid password for user: {login_request.account}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect account or password",
@@ -478,3 +544,258 @@ async def list_tools_in_subcategory(model_name: str, category_name: str, subcate
     except Exception as e:
         logger.error(f"Error listing tools: {e}")
         raise HTTPException(status_code=500, detail=f"Error retrieving tools: {str(e)}")
+
+# User Management APIs (Admin only)
+def check_admin_permission(current_user):
+    """Check if current user has admin permission (type=2)"""
+    if current_user["type"] != 2:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin permission required"
+        )
+
+@app.get("/admin/users")
+async def list_users(current_user = Depends(get_current_user)):
+    """List all users (Admin only)"""
+    try:
+        check_admin_permission(current_user)
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT uid, account, type, name FROM users ORDER BY uid")
+        users = cursor.fetchall()
+        conn.close()
+        
+        users_list = []
+        for user in users:
+            users_list.append({
+                "uid": user["uid"],
+                "account": user["account"],
+                "type": user["type"],
+                "name": user["name"]
+            })
+        
+        logger.info(f"Admin {current_user['account']} listed {len(users_list)} users")
+        return {"users": users_list, "count": len(users_list)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing users: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving users: {str(e)}")
+
+@app.post("/admin/users")
+async def create_user(user_data: UserCreateRequest, current_user = Depends(get_current_user)):
+    """Create new user (Admin only)"""
+    try:
+        check_admin_permission(current_user)
+        
+        # Check if user already exists
+        existing_user = get_user_by_account(user_data.account)
+        if existing_user:
+            raise HTTPException(status_code=400, detail="User account already exists")
+        
+        # Hash password
+        hashed_password = hash_password(user_data.password)
+        
+        # Insert new user
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO users (account, password, type, name)
+            VALUES (?, ?, ?, ?)
+        ''', (user_data.account, hashed_password, user_data.type, user_data.name))
+        
+        new_user_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"Admin {current_user['account']} created user: {user_data.account}")
+        return {
+            "message": "User created successfully",
+            "user": {
+                "uid": new_user_id,
+                "account": user_data.account,
+                "type": user_data.type,
+                "name": user_data.name
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating user: {e}")
+        raise HTTPException(status_code=500, detail=f"Error creating user: {str(e)}")
+
+@app.put("/admin/users/{user_id}")
+async def update_user(user_id: int, user_data: UserUpdateRequest, current_user = Depends(get_current_user)):
+    """Update user (Admin only)"""
+    try:
+        check_admin_permission(current_user)
+        
+        # Check if user exists
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE uid = ?", (user_id,))
+        existing_user = cursor.fetchone()
+        
+        if not existing_user:
+            conn.close()
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Build update query dynamically
+        update_fields = []
+        update_values = []
+        
+        if user_data.account is not None:
+            # Check if new account already exists (excluding current user)
+            cursor.execute("SELECT uid FROM users WHERE account = ? AND uid != ?", (user_data.account, user_id))
+            if cursor.fetchone():
+                conn.close()
+                raise HTTPException(status_code=400, detail="Account already exists")
+            update_fields.append("account = ?")
+            update_values.append(user_data.account)
+        
+        if user_data.password is not None:
+            update_fields.append("password = ?")
+            update_values.append(hash_password(user_data.password))
+        
+        if user_data.type is not None:
+            update_fields.append("type = ?")
+            update_values.append(user_data.type)
+        
+        if user_data.name is not None:
+            update_fields.append("name = ?")
+            update_values.append(user_data.name)
+        
+        if not update_fields:
+            conn.close()
+            raise HTTPException(status_code=400, detail="No fields to update")
+        
+        # Execute update
+        update_query = f"UPDATE users SET {', '.join(update_fields)} WHERE uid = ?"
+        update_values.append(user_id)
+        cursor.execute(update_query, update_values)
+        conn.commit()
+        
+        # Get updated user
+        cursor.execute("SELECT uid, account, type, name FROM users WHERE uid = ?", (user_id,))
+        updated_user = cursor.fetchone()
+        conn.close()
+        
+        logger.info(f"Admin {current_user['account']} updated user ID: {user_id}")
+        return {
+            "message": "User updated successfully",
+            "user": {
+                "uid": updated_user["uid"],
+                "account": updated_user["account"],
+                "type": updated_user["type"],
+                "name": updated_user["name"]
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating user: {e}")
+        raise HTTPException(status_code=500, detail=f"Error updating user: {str(e)}")
+
+@app.delete("/admin/users/{user_id}")
+async def delete_user(user_id: int, current_user = Depends(get_current_user)):
+    """Delete user (Admin only)"""
+    try:
+        check_admin_permission(current_user)
+        
+        # Check if user exists
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT account FROM users WHERE uid = ?", (user_id,))
+        user_to_delete = cursor.fetchone()
+        
+        if not user_to_delete:
+            conn.close()
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Prevent deleting self
+        if user_id == current_user["uid"]:
+            conn.close()
+            raise HTTPException(status_code=400, detail="Cannot delete your own account")
+        
+        # Delete user
+        cursor.execute("DELETE FROM users WHERE uid = ?", (user_id,))
+        conn.commit()
+        conn.close()
+        
+        logger.info(f"Admin {current_user['account']} deleted user: {user_to_delete['account']}")
+        return {"message": "User deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting user: {e}")
+        raise HTTPException(status_code=500, detail=f"Error deleting user: {str(e)}")
+
+@app.get("/admin/users/{user_id}")
+async def get_user(user_id: int, current_user = Depends(get_current_user)):
+    """Get user details (Admin only)"""
+    try:
+        check_admin_permission(current_user)
+        
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT uid, account, type, name FROM users WHERE uid = ?", (user_id,))
+        user = cursor.fetchone()
+        conn.close()
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        return {
+            "user": {
+                "uid": user["uid"],
+                "account": user["account"],
+                "type": user["type"],
+                "name": user["name"]
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting user: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving user: {str(e)}")
+
+@app.on_event("startup")
+async def startup_event():
+    """Run initialization on startup"""
+    logger.info("Starting application...")
+    # recreate_admin_user()  # Fix admin user password
+    debug_database_users()  # Debug database state
+
+def recreate_admin_user():
+    """Recreate admin user with correct password hash"""
+    try:
+        logger.info("Recreating admin user...")
+        
+        # Generate new hash for admin123
+        new_hash = hash_password("admin123")
+        logger.info(f"Generated new hash for admin123: {new_hash[:20]}...")
+        
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        
+        # Delete existing admin user
+        cursor.execute("DELETE FROM users WHERE account = ?", ("admin",))
+        
+        # Insert new admin user
+        cursor.execute(
+            "INSERT INTO users (account, password, type, name) VALUES (?, ?, ?, ?)",
+            ("admin", new_hash, 2, "Administrator")
+        )
+        
+        conn.commit()
+        conn.close()
+        
+        logger.info("Admin user recreated successfully")
+        
+        # Test the new hash
+        test_result = bcrypt.checkpw("admin123".encode('utf-8'), new_hash.encode('utf-8'))
+        logger.info(f"Testing new hash: {test_result}")
+        
+    except Exception as e:
+        logger.error(f"Error recreating admin user: {e}")
