@@ -128,6 +128,11 @@
                             <input type="password" class="form-control" id="createPassword" required>
                         </div>
                         <div class="mb-3">
+                            <label for="createPasswordConfirm" class="form-label">確認密碼</label>
+                            <input type="password" class="form-control" id="createPasswordConfirm" required>
+                            <div class="invalid-feedback" id="createPasswordError"></div>
+                        </div>
+                        <div class="mb-3">
                             <label for="createName" class="form-label">姓名</label>
                             <input type="text" class="form-control" id="createName" required>
                         </div>
@@ -172,6 +177,11 @@
                             <input type="password" class="form-control" id="editPassword">
                         </div>
                         <div class="mb-3">
+                            <label for="editPasswordConfirm" class="form-label">確認密碼</label>
+                            <input type="password" class="form-control" id="editPasswordConfirm">
+                            <div class="invalid-feedback" id="editPasswordError"></div>
+                        </div>
+                        <div class="mb-3">
                             <label for="editName" class="form-label">姓名</label>
                             <input type="text" class="form-control" id="editName" required>
                         </div>
@@ -207,6 +217,16 @@
             // Initialize modals
             createUserModalInstance = new bootstrap.Modal(document.getElementById('createUserModal'));
             editUserModalInstance = new bootstrap.Modal(document.getElementById('editUserModal'));
+            
+            // Password validation for create form
+            $('#createPassword, #createPasswordConfirm').on('input', function() {
+                validateCreatePassword();
+            });
+            
+            // Password validation for edit form
+            $('#editPassword, #editPasswordConfirm').on('input', function() {
+                validateEditPassword();
+            });
             
             // Check admin permission and load users
             checkAdminPermission();
@@ -295,17 +315,38 @@
 
         function showCreateModal() {
             $('#createUserForm')[0].reset();
+            // Reset validation states
+            $('#createPassword, #createPasswordConfirm').removeClass('is-invalid is-valid');
+            $('#createPasswordError').text('');
             createUserModalInstance.show();
         }
 
         function createUser() {
             const account = $('#createAccount').val().trim();
             const password = $('#createPassword').val();
+            const passwordConfirm = $('#createPasswordConfirm').val();
             const name = $('#createName').val().trim();
             const type = parseInt($('#createType').val());
             
+            // Reset validation states
+            $('#createPassword, #createPasswordConfirm').removeClass('is-invalid');
+            $('#createPasswordError').text('');
+            
             if (!account || !password || !name) {
                 alert('請填寫所有必填欄位');
+                return;
+            }
+            
+            // Validate password confirmation
+            if (password !== passwordConfirm) {
+                $('#createPassword, #createPasswordConfirm').addClass('is-invalid');
+                $('#createPasswordError').text('密碼和確認密碼不匹配');
+                return;
+            }
+            
+            if (password.length < 6) {
+                $('#createPassword, #createPasswordConfirm').addClass('is-invalid');
+                $('#createPasswordError').text('密碼長度至少需要6個字符');
                 return;
             }
             
@@ -350,8 +391,13 @@
             $('#editUserId').val(user.uid);
             $('#editAccount').val(user.account);
             $('#editPassword').val(''); // Clear password field
+            $('#editPasswordConfirm').val(''); // Clear password confirmation field
             $('#editName').val(user.name);
             $('#editType').val(user.type);
+            
+            // Reset validation states
+            $('#editPassword, #editPasswordConfirm').removeClass('is-invalid is-valid');
+            $('#editPasswordError').text('');
             
             editUserModalInstance.show();
         }
@@ -360,12 +406,32 @@
             const userId = $('#editUserId').val();
             const account = $('#editAccount').val().trim();
             const password = $('#editPassword').val();
+            const passwordConfirm = $('#editPasswordConfirm').val();
             const name = $('#editName').val().trim();
             const type = parseInt($('#editType').val());
+            
+            // Reset validation states
+            $('#editPassword, #editPasswordConfirm').removeClass('is-invalid');
+            $('#editPasswordError').text('');
             
             if (!account || !name) {
                 alert('請填寫所有必填欄位');
                 return;
+            }
+            
+            // Validate password confirmation if password is provided
+            if (password || passwordConfirm) {
+                if (password !== passwordConfirm) {
+                    $('#editPassword, #editPasswordConfirm').addClass('is-invalid');
+                    $('#editPasswordError').text('密碼和確認密碼不匹配');
+                    return;
+                }
+                
+                if (password.length < 6) {
+                    $('#editPassword, #editPasswordConfirm').addClass('is-invalid');
+                    $('#editPasswordError').text('密碼長度至少需要6個字符');
+                    return;
+                }
             }
             
             const userData = {
@@ -434,6 +500,60 @@
                 console.error('Error deleting user:', error);
                 alert(`刪除用戶失敗: ${error.message}`);
             });
+        }
+
+        function validateCreatePassword() {
+            const password = $('#createPassword').val();
+            const passwordConfirm = $('#createPasswordConfirm').val();
+            
+            // Reset validation states
+            $('#createPassword, #createPasswordConfirm').removeClass('is-invalid is-valid');
+            $('#createPasswordError').text('');
+            
+            if (password || passwordConfirm) {
+                if (password.length > 0 && password.length < 6) {
+                    $('#createPassword').addClass('is-invalid');
+                    $('#createPasswordError').text('密碼長度至少需要6個字符');
+                } else if (password.length >= 6) {
+                    $('#createPassword').addClass('is-valid');
+                }
+                
+                if (passwordConfirm.length > 0) {
+                    if (password === passwordConfirm && password.length >= 6) {
+                        $('#createPasswordConfirm').addClass('is-valid');
+                    } else if (password !== passwordConfirm) {
+                        $('#createPasswordConfirm').addClass('is-invalid');
+                        $('#createPasswordError').text('密碼和確認密碼不匹配');
+                    }
+                }
+            }
+        }
+
+        function validateEditPassword() {
+            const password = $('#editPassword').val();
+            const passwordConfirm = $('#editPasswordConfirm').val();
+            
+            // Reset validation states
+            $('#editPassword, #editPasswordConfirm').removeClass('is-invalid is-valid');
+            $('#editPasswordError').text('');
+            
+            if (password || passwordConfirm) {
+                if (password.length > 0 && password.length < 6) {
+                    $('#editPassword').addClass('is-invalid');
+                    $('#editPasswordError').text('密碼長度至少需要6個字符');
+                } else if (password.length >= 6) {
+                    $('#editPassword').addClass('is-valid');
+                }
+                
+                if (passwordConfirm.length > 0) {
+                    if (password === passwordConfirm && password.length >= 6) {
+                        $('#editPasswordConfirm').addClass('is-valid');
+                    } else if (password !== passwordConfirm) {
+                        $('#editPasswordConfirm').addClass('is-invalid');
+                        $('#editPasswordError').text('密碼和確認密碼不匹配');
+                    }
+                }
+            }
         }
     </script>
 </body>
