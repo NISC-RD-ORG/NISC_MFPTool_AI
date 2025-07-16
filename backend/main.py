@@ -545,6 +545,101 @@ async def list_tools_in_subcategory(model_name: str, category_name: str, subcate
         logger.error(f"Error listing tools: {e}")
         raise HTTPException(status_code=500, detail=f"Error retrieving tools: {str(e)}")
 
+@app.get("/search")
+async def search_tools(q: str, current_user = Depends(get_current_user)):
+    """Search tools across all models and categories"""
+    try:
+        if not q or len(q.strip()) < 1:
+            return {"results": [], "count": 0}
+        
+        query = q.strip().lower()
+        tools_path = get_tools_path()
+        results = []
+        
+        # Search through all models, categories, subcategories, and tools
+        for model_dir in tools_path.iterdir():
+            if not model_dir.is_dir():
+                continue
+                
+            model_name = model_dir.name
+            
+            for category_dir in model_dir.iterdir():
+                if not category_dir.is_dir():
+                    continue
+                    
+                category_name = category_dir.name
+                
+                for subcategory_dir in category_dir.iterdir():
+                    if not subcategory_dir.is_dir():
+                        continue
+                        
+                    subcategory_name = subcategory_dir.name
+                    
+                    for tool_dir in subcategory_dir.iterdir():
+                        if not tool_dir.is_dir():
+                            continue
+                            
+                        content_file = tool_dir / "content.md"
+                        if not content_file.exists():
+                            continue
+                            
+                        tool_name = tool_dir.name
+                        
+                        # Check if query matches tool name (case insensitive)
+                        if query in tool_name.lower():
+                            tool_path = f"{model_name}/{category_name}/{subcategory_name}/{tool_name}"
+                            path_display = f"{model_name} > {category_name} > {subcategory_name}"
+                            
+                            results.append({
+                                "name": tool_name,
+                                "display_name": tool_name,
+                                "path": tool_path,
+                                "path_display": path_display,
+                                "model": model_name,
+                                "category": category_name,
+                                "subcategory": subcategory_name
+                            })
+                            
+                        # Also search in content.md file for more comprehensive search
+                        else:
+                            try:
+                                with open(content_file, 'r', encoding='utf-8') as f:
+                                    content = f.read().lower()
+                                    if query in content:
+                                        tool_path = f"{model_name}/{category_name}/{subcategory_name}/{tool_name}"
+                                        path_display = f"{model_name} > {category_name} > {subcategory_name}"
+                                        
+                                        results.append({
+                                            "name": tool_name,
+                                            "display_name": tool_name,
+                                            "path": tool_path,
+                                            "path_display": path_display,
+                                            "model": model_name,
+                                            "category": category_name,
+                                            "subcategory": subcategory_name,
+                                            "match_type": "content"
+                                        })
+                            except Exception as e:
+                                logger.warning(f"Error reading content file {content_file}: {e}")
+        
+        # Remove duplicates and limit results
+        seen_paths = set()
+        unique_results = []
+        for result in results:
+            if result["path"] not in seen_paths:
+                seen_paths.add(result["path"])
+                unique_results.append(result)
+                
+        # Limit to 20 results to avoid overwhelming the UI
+        limited_results = unique_results[:20]
+        
+        logger.info(f"Search for '{q}' found {len(limited_results)} results")
+        return {"results": limited_results, "count": len(limited_results), "query": q}
+        
+    except Exception as e:
+        logger.error(f"Error searching tools: {e}")
+        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+
 # User Management APIs (Admin only)
 def check_admin_permission(current_user):
     """Check if current user has admin permission (type=2)"""

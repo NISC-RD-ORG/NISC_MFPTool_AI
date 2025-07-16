@@ -233,6 +233,96 @@
         .back-button:hover {
             background: #545b62;
         }
+        
+        .search-container {
+            margin-bottom: 20px;
+            position: relative;
+        }
+        
+        .search-box {
+            width: 100%;
+            padding: 10px 35px 10px 12px;
+            border: 2px solid #e9ecef;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: border-color 0.3s ease;
+        }
+        
+        .search-box:focus {
+            outline: none;
+            border-color: #007BFF;
+        }
+        
+        .search-icon {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: #6c757d;
+            cursor: pointer;
+        }
+        
+        .search-results {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            display: none;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        .search-result-item {
+            padding: 10px;
+            border-bottom: 1px solid #f0f0f0;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        
+        .search-result-item:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .search-result-item:last-child {
+            border-bottom: none;
+        }
+        
+        .search-result-path {
+            font-size: 12px;
+            color: #6c757d;
+            margin-bottom: 3px;
+        }
+        
+        .search-result-name {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .search-highlight {
+            background-color: #fff3cd;
+            padding: 1px 2px;
+            border-radius: 2px;
+        }
+        
+        .clear-search {
+            background: none;
+            border: none;
+            color: #6c757d;
+            cursor: pointer;
+            padding: 5px;
+            margin-left: 5px;
+            border-radius: 3px;
+        }
+        
+        .clear-search:hover {
+            background: #f8f9fa;
+            color: #333;
+        }
     </style>
 </head>
 <body>
@@ -250,6 +340,19 @@
         </div>
         
         <div class="navigation">
+            <div class="search-container">
+                <input type="text" 
+                       class="search-box" 
+                       id="searchBox" 
+                       placeholder="搜尋工具..." 
+                       autocomplete="off">
+                <i class="fas fa-search search-icon" id="searchIcon"></i>
+                <button class="clear-search" id="clearSearch" style="display: none;" title="清除搜尋">
+                    <i class="fas fa-times"></i>
+                </button>
+                <div class="search-results" id="searchResults"></div>
+            </div>
+            
             <div class="breadcrumb" id="breadcrumb">
                 <i class="fas fa-home"></i> 首頁
             </div>
@@ -280,10 +383,173 @@
     <script>
         let currentPath = [];
         let navigationHistory = [];
+        let searchTimeout;
+        let allTools = [];
 
         $(document).ready(function() {
             checkAuth();
+            initializeSearch();
         });
+
+        function initializeSearch() {
+            const searchBox = $('#searchBox');
+            const searchResults = $('#searchResults');
+            const clearSearch = $('#clearSearch');
+            
+            // Search input handler
+            searchBox.on('input', function() {
+                const query = $(this).val().trim();
+                
+                if (query.length > 0) {
+                    clearSearch.show();
+                    
+                    // Debounce search
+                    clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(() => {
+                        performSearch(query);
+                    }, 300);
+                } else {
+                    clearSearch.hide();
+                    searchResults.hide();
+                }
+            });
+            
+            // Clear search
+            clearSearch.on('click', function() {
+                searchBox.val('');
+                searchResults.hide();
+                clearSearch.hide();
+                searchBox.focus();
+            });
+            
+            // Hide search results when clicking outside
+            $(document).on('click', function(e) {
+                if (!$(e.target).closest('.search-container').length) {
+                    searchResults.hide();
+                }
+            });
+            
+            // Show search results when focusing on search box with content
+            searchBox.on('focus', function() {
+                if ($(this).val().trim().length > 0) {
+                    searchResults.show();
+                }
+            });
+        }
+
+        function performSearch(query) {
+            const searchResults = $('#searchResults');
+            searchResults.html('<div class="search-result-item">搜尋中...</div>').show();
+            
+            fetch(`${getApiBaseUrl()}/search?q=${encodeURIComponent(query)}`, {
+                headers: getAuthHeaders()
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Search failed');
+                }
+                return response.json();
+            })
+            .then(data => {
+                displaySearchResults(data.results || [], query);
+            })
+            .catch(error => {
+                console.error('Search error:', error);
+                searchResults.html('<div class="search-result-item" style="color: #dc3545;">搜尋失敗</div>');
+            });
+        }
+
+        function displaySearchResults(results, query) {
+            const searchResults = $('#searchResults');
+            
+            if (results.length === 0) {
+                searchResults.html('<div class="search-result-item">未找到相關結果</div>');
+                return;
+            }
+            
+            const resultsHtml = results.map(result => {
+                const highlightedName = highlightText(result.display_name || result.name, query);
+                const path = result.path_display || result.path || '';
+                
+                return `
+                    <div class="search-result-item" data-path="${result.path}" data-name="${result.display_name || result.name}">
+                        <div class="search-result-path">${path}</div>
+                        <div class="search-result-name">${highlightedName}</div>
+                    </div>
+                `;
+            }).join('');
+            
+            searchResults.html(resultsHtml);
+            
+            // Add click handlers
+            searchResults.find('.search-result-item').on('click', function() {
+                const path = $(this).data('path');
+                const name = $(this).data('name');
+                
+                // Clear search box and hide results
+                $('#searchBox').val('');
+                $('#clearSearch').hide();
+                searchResults.hide();
+                
+                loadToolFromSearch(path, name);
+            });
+        }
+
+        function highlightText(text, query) {
+            if (!query || !text) return text;
+            
+            const regex = new RegExp(`(${escapeRegex(query)})`, 'gi');
+            return text.replace(regex, '<span class="search-highlight">$1</span>');
+        }
+
+        function escapeRegex(string) {
+            return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+
+        function clearSearchBox() {
+            $('#searchBox').val('');
+            $('#searchResults').hide();
+            $('#clearSearch').hide();
+        }
+
+        function loadToolFromSearch(toolPath, displayName) {
+            // Parse the tool path to extract model, category, subcategory, and tool
+            const pathParts = toolPath.split('/');
+            
+            if (pathParts.length >= 4) {
+                const model = pathParts[0];
+                const category = pathParts[1];
+                const subcategory = pathParts[2];
+                
+                // Set the current path to the subcategory level
+                currentPath = [model, category, subcategory];
+                updateBreadcrumb();
+                
+                // Update sidebar title
+                $('#sidebarTitle').html(`<i class="fas fa-wrench"></i> 工具列表`);
+                $('#contentTitle').text(`${model} > ${category} > ${subcategory} - ${displayName}`);
+                
+                // Load all tools in this subcategory
+                loadTools(model, category, subcategory);
+                
+                // Load the specific tool content
+                loadToolContent(toolPath, displayName);
+                
+                // After a short delay, highlight the selected tool in the list
+                setTimeout(() => {
+                    const toolName = pathParts[pathParts.length - 1];
+                    $('.list-item').removeClass('selected');
+                    $(`.list-item[data-name="${toolName}"]`).addClass('selected');
+                }, 500);
+                
+            } else {
+                // Fallback: if path parsing fails, just load the tool content
+                currentPath = [];
+                updateBreadcrumb();
+                $('#sidebarTitle').html('<i class="fas fa-search"></i> 搜尋結果');
+                loadToolContent(toolPath, displayName);
+            }
+        }
 
         function checkAuth() {
             const token = localStorage.getItem('access_token');
@@ -351,6 +617,8 @@
 
         function goToLevel(level) {
             currentPath = currentPath.slice(0, level);
+            clearSearchBox(); // Clear search when navigating
+            
             if (level === 0) {
                 loadModels();
             } else if (level === 1) {
@@ -373,6 +641,9 @@
             updateBreadcrumb();
             $('#sidebarTitle').html('<i class="fas fa-tools"></i> 機型列表');
             $('#contentTitle').text('請選擇機型');
+            
+            // Clear search when navigating
+            clearSearchBox();
             
             fetch(`${getApiBaseUrl()}/models`, {
                 headers: getAuthHeaders()
