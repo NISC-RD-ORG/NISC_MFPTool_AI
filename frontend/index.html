@@ -137,6 +137,8 @@
             background: white;
             display: flex;
             flex-direction: column;
+            height: 100vh;
+            overflow: hidden;
         }
         
         .content-header {
@@ -237,11 +239,14 @@
         .search-container {
             margin-bottom: 20px;
             position: relative;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         
         .search-box {
-            width: 100%;
-            padding: 10px 35px 10px 12px;
+            flex: 1;
+            padding: 10px 40px 10px 12px;
             border: 2px solid #e9ecef;
             border-radius: 5px;
             font-size: 14px;
@@ -255,7 +260,7 @@
         
         .search-icon {
             position: absolute;
-            right: 10px;
+            right: 45px;
             top: 50%;
             transform: translateY(-50%);
             color: #6c757d;
@@ -271,7 +276,7 @@
             position: absolute;
             top: 100%;
             left: 0;
-            right: 0;
+            right: 42px;
             z-index: 1000;
             display: none;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
@@ -314,14 +319,109 @@
             border: none;
             color: #6c757d;
             cursor: pointer;
-            padding: 5px;
-            margin-left: 5px;
+            padding: 8px;
             border-radius: 3px;
+            flex-shrink: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         
         .clear-search:hover {
             background: #f8f9fa;
             color: #333;
+        }
+        
+        .edit-button {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-left: 10px;
+        }
+        
+        .edit-button:hover {
+            background: #218838;
+        }
+        
+        .edit-container {
+            display: none;
+            height: calc(100vh - 150px);
+            flex-direction: row;
+        }
+        
+        .edit-panel {
+            width: 50%;
+            padding: 10px;
+            border-right: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .preview-panel {
+            width: 50%;
+            padding: 10px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+        }
+        
+        .preview-header {
+            border-bottom: 2px solid #007BFF;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .edit-textarea {
+            width: 100%;
+            flex: 1;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            resize: none;
+            min-height: 400px;
+        }
+        
+        .edit-controls {
+            margin-bottom: 10px;
+            display: flex;
+            gap: 10px;
+        }
+        
+        .save-button {
+            background: #007BFF;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .save-button:hover {
+            background: #0056b3;
+        }
+        
+        .cancel-button {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .cancel-button:hover {
+            background: #545b62;
         }
     </style>
 </head>
@@ -370,10 +470,36 @@
     <div class="main-content">
         <div class="content-header">
             <h1 id="contentTitle">請選擇機型和工具</h1>
+            <button class="edit-button" id="editButton" style="display: none;" onclick="toggleEditMode()">
+                <i class="fas fa-edit"></i> 編輯
+            </button>
         </div>
         <div class="content-area" id="contentArea">
             <div style="display: flex; align-items: center; justify-content: center; height: 200px;">
                 請從左側列表中選擇機型，然後瀏覽到具體的工具來查看詳細資訊
+            </div>
+        </div>
+        
+        <!-- Edit Mode Container -->
+        <div class="edit-container" id="editContainer">
+            <div class="edit-panel">
+                <div class="edit-controls">
+                    <button class="save-button" onclick="saveToolContent()">
+                        <i class="fas fa-save"></i> 儲存
+                    </button>
+                    <button class="cancel-button" onclick="cancelEdit()">
+                        <i class="fas fa-times"></i> 取消
+                    </button>
+                </div>
+                <textarea class="edit-textarea" id="editTextarea" placeholder="在此編輯 Markdown 內容..."></textarea>
+            </div>
+            <div class="preview-panel">
+                <div class="preview-header">
+                    <i class="fas fa-eye"></i> 即時預覽
+                </div>
+                <div class="markdown-content" id="previewContent">
+                    預覽內容將在此顯示...
+                </div>
             </div>
         </div>
     </div>
@@ -385,6 +511,10 @@
         let navigationHistory = [];
         let searchTimeout;
         let allTools = [];
+        let currentToolPath = '';
+        let currentToolContent = '';
+        let isEditMode = false;
+        let hasUnsavedChanges = false;
 
         $(document).ready(function() {
             checkAuth();
@@ -513,6 +643,11 @@
         }
 
         function loadToolFromSearch(toolPath, displayName) {
+            // If in edit mode, exit it first
+            if (isEditMode) {
+                exitEditMode();
+            }
+            
             // Parse the tool path to extract model, category, subcategory, and tool
             const pathParts = toolPath.split('/');
             
@@ -800,6 +935,18 @@
         }
 
         function loadToolContent(toolPath, displayName) {
+            // If in edit mode, check for unsaved changes before switching
+            if (isEditMode && hasUnsavedChanges) {
+                if (!confirm('您有未儲存的變更，確定要切換到其他工具嗎？未儲存的變更將會丟失。')) {
+                    return; // Cancel the switch
+                }
+            }
+            
+            // If in edit mode, exit it first
+            if (isEditMode) {
+                exitEditMode();
+            }
+            
             $('#contentTitle').text(displayName);
             $('#contentArea').html('<div class="tool-loading"><i class="fas fa-spinner fa-spin"></i> 載入中...</div>');
             
@@ -826,6 +973,10 @@
         }
         
         function displayToolContent(toolData, toolPath) {
+            // Store current tool info
+            currentToolPath = toolPath;
+            currentToolContent = toolData.content;
+            
             // Convert markdown to HTML
             let htmlContent = marked.parse(toolData.content);
             
@@ -853,6 +1004,14 @@
                     ${htmlContent}
                 </div>
             `);
+            
+            // Show edit button for admin users
+            const userInfo = JSON.parse(localStorage.getItem('user_info') || '{}');
+            if (userInfo.type === 2) {
+                $('#editButton').show();
+            } else {
+                $('#editButton').hide();
+            }
         }
 
         function handleError(error) {
@@ -865,6 +1024,135 @@
 
         function openUserManagement() {
             location.href = 'admin.html';
+        }
+        
+        function toggleEditMode() {
+            if (isEditMode) {
+                exitEditMode();
+            } else {
+                enterEditMode();
+            }
+        }
+        
+        function enterEditMode() {
+            isEditMode = true;
+            hasUnsavedChanges = false;
+            
+            // Hide normal content area and show edit container
+            $('#contentArea').hide();
+            $('#editContainer').css('display', 'flex').show();
+            
+            // Set edit textarea content
+            $('#editTextarea').val(currentToolContent);
+            
+            // Update edit button
+            $('#editButton').html('<i class="fas fa-eye"></i> 預覽').removeClass('edit-button').addClass('cancel-button');
+            
+            // Update preview
+            updatePreview();
+            
+            // Setup real-time preview update and change detection
+            $('#editTextarea').on('input', function() {
+                updatePreview();
+                // Check if content has changed
+                hasUnsavedChanges = ($(this).val() !== currentToolContent);
+            });
+        }
+        
+        function exitEditMode() {
+            isEditMode = false;
+            hasUnsavedChanges = false;
+            
+            // Show normal content area and hide edit container
+            $('#editContainer').hide();
+            $('#contentArea').show();
+            
+            // Update edit button
+            $('#editButton').html('<i class="fas fa-edit"></i> 編輯').removeClass('cancel-button').addClass('edit-button');
+            
+            // Remove input event listener
+            $('#editTextarea').off('input');
+        }
+        
+        function updatePreview() {
+            const content = $('#editTextarea').val();
+            let htmlContent = marked.parse(content);
+            
+            // Replace image paths with API endpoints (same as displayToolContent)
+            htmlContent = htmlContent.replace(
+                /src="\.\/image\/([^"]+)"/g, 
+                function(match, imageName) {
+                    const cleanImageName = imageName.replace(/^[\.\/]+/, '');
+                    const imageUrl = `${getApiBaseUrl()}/gettoolimage/${encodeURIComponent(currentToolPath)}/${encodeURIComponent(cleanImageName)}`;
+                    return `src="${imageUrl}"`;
+                }
+            );
+            
+            $('#previewContent').html(htmlContent);
+        }
+        
+        function saveToolContent() {
+            const content = $('#editTextarea').val();
+            
+            if (!currentToolPath) {
+                alert('沒有選擇要編輯的工具');
+                return;
+            }
+            
+            // Show saving indicator
+            const saveBtn = $('.save-button');
+            const originalText = saveBtn.html();
+            saveBtn.html('<i class="fas fa-spinner fa-spin"></i> 儲存中...').prop('disabled', true);
+            
+            fetch(`${getApiBaseUrl()}/edittool/${encodeURIComponent(currentToolPath)}`, {
+                method: 'PUT',
+                headers: {
+                    ...getAuthHeaders(),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    content: content
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Update current content
+                currentToolContent = content;
+                hasUnsavedChanges = false;
+                
+                // Update the main content area
+                displayToolContent({content: content}, currentToolPath);
+                
+                // Exit edit mode
+                exitEditMode();
+                
+                alert('內容儲存成功！');
+            })
+            .catch(error => {
+                console.error('Save error:', error);
+                if (error.message.includes('403')) {
+                    alert('沒有編輯權限');
+                } else if (error.message.includes('401')) {
+                    alert('登入已過期，請重新登入');
+                    logout();
+                } else {
+                    alert('儲存失敗：' + error.message);
+                }
+            })
+            .finally(() => {
+                saveBtn.html(originalText).prop('disabled', false);
+            });
+        }
+        
+        function cancelEdit() {
+            if (confirm('確定要取消編輯嗎？未儲存的變更將會丟失。')) {
+                exitEditMode();
+            }
         }   
     </script>
 </body>

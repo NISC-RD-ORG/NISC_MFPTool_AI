@@ -74,6 +74,9 @@ class UserUpdateRequest(BaseModel):
     type: int = None
     name: str = None
 
+class ToolEditRequest(BaseModel):
+    content: str
+
 def get_db_connection():
     """Get database connection"""
     conn = sqlite3.connect(DB_PATH)
@@ -637,8 +640,49 @@ async def search_tools(q: str, current_user = Depends(get_current_user)):
         return {"results": limited_results, "count": len(limited_results), "query": q}
         
     except Exception as e:
-        logger.error(f"Error searching tools: {e}")
+        logger.info(f"Error searching tools: {e}")
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+
+@app.put("/edittool/{tool_path:path}")
+async def edit_tool(tool_path: str, edit_request: ToolEditRequest, current_user = Depends(get_current_user)):
+    """Edit tool content (Admin only)"""
+    try:
+        # Check if user is admin
+        if current_user["type"] != 2:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Admin permission required"
+            )
+        
+        tools_path = get_tools_path()
+        full_tool_path = tools_path / tool_path
+        
+        if not full_tool_path.exists():
+            raise HTTPException(status_code=404, detail="Tool not found")
+        
+        # Write content to content.md
+        content_file = full_tool_path / "content.md"
+        
+        # Create backup before editing
+        backup_file = full_tool_path / f"content.md.backup.{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        if content_file.exists():
+            shutil.copy2(content_file, backup_file)
+        
+        with content_file.open("w", encoding="utf-8") as f:
+            f.write(edit_request.content)
+        
+        logger.info(f"Tool {tool_path} edited by admin {current_user['account']}")
+        return {
+            "message": "Tool content updated successfully",
+            "tool_path": tool_path,
+            "backup_created": str(backup_file)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error editing tool {tool_path}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error editing tool: {str(e)}")
 
 # User Management APIs (Admin only)
 def check_admin_permission(current_user):
