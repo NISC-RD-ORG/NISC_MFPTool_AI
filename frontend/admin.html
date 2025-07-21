@@ -42,6 +42,41 @@
             overflow: hidden;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
+        .tool-card {
+            transition: transform 0.2s, box-shadow 0.2s;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+        }
+        .tool-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+        .nav-tabs .nav-link {
+            color: #495057;
+            border: none;
+            border-bottom: 2px solid transparent;
+        }
+        .nav-tabs .nav-link.active {
+            color: #764ba2;
+            border-bottom: 2px solid #764ba2;
+            background: none;
+        }
+        .nav-tabs .nav-link:hover {
+            border-bottom: 2px solid #667eea;
+        }
+        .breadcrumb {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+        }
+        .breadcrumb-item a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        .breadcrumb-item a:hover {
+            color: #764ba2;
+            text-decoration: underline;
+        }
     </style>
 </head>
 <body>
@@ -67,42 +102,110 @@
         <div class="container">
             <div class="row align-items-center">
                 <div class="col-md-8">
-                    <h1><i class="fas fa-users-cog"></i> 用戶管理</h1>
-                    <p class="mb-0">管理系統用戶帳號</p>
-                </div>
-                <div class="col-md-4 text-end">
-                    <button class="btn btn-light btn-lg" onclick="showCreateModal()">
-                        <i class="fas fa-user-plus"></i> 新增用戶
-                    </button>
+                    <h1><i class="fas fa-users-cog"></i> 系統管理</h1>
+                    <p class="mb-0">管理系統用戶帳號和工具內容</p>
                 </div>
             </div>
         </div>
     </div>
 
     <div class="container">
-        <!-- Loading -->
-        <div id="loading" class="loading">
-            <i class="fas fa-spinner fa-spin fa-2x"></i>
-            <p>載入中...</p>
-        </div>
+        <!-- Navigation Tabs -->
+        <ul class="nav nav-tabs mb-4" id="adminTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="users-tab" data-bs-toggle="tab" data-bs-target="#users" type="button" role="tab">
+                    <i class="fas fa-users"></i> 用戶管理
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tools-tab" data-bs-toggle="tab" data-bs-target="#tools" type="button" role="tab">
+                    <i class="fas fa-tools"></i> 工具管理
+                </button>
+            </li>
+        </ul>
 
-        <!-- Users Table -->
-        <div id="usersContainer" class="mb-4">
-            <div class="table-responsive">
-                <table class="table table-hover mb-0">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>ID</th>
-                            <th>帳號</th>
-                            <th>姓名</th>
-                            <th>類型</th>
-                            <th>操作</th>
-                        </tr>
-                    </thead>
-                    <tbody id="usersTableBody">
-                        <!-- Users will be loaded here -->
-                    </tbody>
-                </table>
+        <!-- Tab Content -->
+        <div class="tab-content" id="adminTabContent">
+        <!-- Tab Content -->
+        <div class="tab-content" id="adminTabContent">
+            <!-- Users Management Tab -->
+            <div class="tab-pane fade show active" id="users" role="tabpanel">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h3><i class="fas fa-users"></i> 用戶管理</h3>
+                    <button class="btn btn-primary" onclick="showCreateModal()">
+                        <i class="fas fa-user-plus"></i> 新增用戶
+                    </button>
+                </div>
+                
+                <!-- Loading -->
+                <div id="loading" class="loading">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p>載入中...</p>
+                </div>
+
+                <!-- Users Table -->
+                <div id="usersContainer" class="mb-4">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>帳號</th>
+                                    <th>姓名</th>
+                                    <th>類型</th>
+                                    <th>操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="usersTableBody">
+                                <!-- Users will be loaded here -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tools Management Tab -->
+            <div class="tab-pane fade" id="tools" role="tabpanel">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h3><i class="fas fa-tools"></i> 工具管理</h3>
+                    <div>
+                        <button class="btn btn-info me-2" onclick="refreshToolsList()">
+                            <i class="fas fa-sync-alt"></i> 重新整理
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tools Navigation -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <nav aria-label="breadcrumb">
+                            <ol class="breadcrumb" id="toolsBreadcrumb">
+                                <li class="breadcrumb-item active">根目錄</li>
+                            </ol>
+                        </nav>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="toolsSearch" placeholder="搜尋工具...">
+                            <button class="btn btn-outline-secondary" onclick="searchTools()">
+                                <i class="fas fa-search"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tools Loading -->
+                <div id="toolsLoading" class="loading">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p>載入中...</p>
+                </div>
+
+                <!-- Tools Content -->
+                <div id="toolsContainer">
+                    <div class="row" id="toolsGrid">
+                        <!-- Tools and categories will be loaded here -->
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -212,6 +315,13 @@
     <script>
         let currentUsers = [];
         let createUserModalInstance, editUserModalInstance;
+
+        // Utility function to escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
 
         $(document).ready(function() {
             // Initialize modals
@@ -528,6 +638,329 @@
                 }
             }
         }
+
+        // ========== 工具管理功能 ==========
+        let currentToolsPath = '';
+        let currentToolsList = [];
+
+        function refreshToolsList() {
+            loadToolsData(currentToolsPath);
+        }
+
+        function loadToolsData(path = '') {
+            $('#toolsLoading').show();
+            $('#toolsContainer').hide();
+            
+            fetch(`${getApiBaseUrl()}/browse?path=${encodeURIComponent(path)}`, {
+                headers: getAuthHeaders()
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to load tools');
+                }
+                return response.json();
+            })
+            .then(data => {
+                currentToolsPath = path;
+                currentToolsList = data.items || [];
+                displayToolsData(data);
+                updateToolsBreadcrumb(data.breadcrumbs || [], data.parent_path);
+                $('#toolsLoading').hide();
+                $('#toolsContainer').show();
+            })
+            .catch(error => {
+                console.error('Error loading tools:', error);
+                alert('載入工具清單失敗');
+                $('#toolsLoading').hide();
+            });
+        }
+
+        function displayToolsData(data) {
+            const grid = $('#toolsGrid');
+            grid.empty();
+
+            if (!data.items || data.items.length === 0) {
+                grid.html(`
+                    <div class="col-12">
+                        <div class="text-center text-muted py-5">
+                            <i class="fas fa-folder-open fa-3x mb-3"></i>
+                            <h5>此目錄為空</h5>
+                            <p>沒有找到任何工具或子分類</p>
+                        </div>
+                    </div>
+                `);
+                return;
+            }
+
+            data.items.forEach(item => {
+                const card = createToolCard(item);
+                grid.append(card);
+            });
+        }
+
+        function createToolCard(item) {
+            const isCategory = !item.is_tool;
+            const icon = isCategory ? 'fas fa-folder' : 'fas fa-file-alt';
+            const badgeClass = isCategory ? 'bg-info' : 'bg-success';
+            const badgeText = isCategory ? `${item.tool_count || 0} 工具` : '工具';
+            
+            return $(`
+                <div class="col-md-6 col-lg-4 mb-3">
+                    <div class="card tool-card h-100">
+                        <div class="card-body">
+                            <div class="d-flex align-items-start justify-content-between">
+                                <div class="flex-grow-1">
+                                    <h6 class="card-title">
+                                        <i class="${icon} me-2"></i>
+                                        ${escapeHtml(item.display_name)}
+                                    </h6>
+                                    <small class="text-muted">${escapeHtml(item.name)}</small>
+                                </div>
+                                <span class="badge ${badgeClass} ms-2">${badgeText}</span>
+                            </div>
+                            <div class="mt-3">
+                                ${isCategory ? 
+                                    `<button class="btn btn-sm btn-outline-primary me-1" onclick="navigateToPath('${item.path}')">
+                                        <i class="fas fa-folder-open"></i> 開啟
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="checkDeleteCategory('${item.path}')">
+                                        <i class="fas fa-trash"></i> 刪除
+                                    </button>` :
+                                    `<button class="btn btn-sm btn-outline-primary me-1" onclick="editTool('${item.path}')">
+                                        <i class="fas fa-edit"></i> 編輯
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteTool('${item.path}')">
+                                        <i class="fas fa-trash"></i> 刪除
+                                    </button>`
+                                }
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `);
+        }
+
+        function updateToolsBreadcrumb(breadcrumbs, parentPath) {
+            const breadcrumbContainer = $('#toolsBreadcrumb');
+            breadcrumbContainer.empty();
+
+            // Root breadcrumb
+            breadcrumbContainer.append(`
+                <li class="breadcrumb-item">
+                    <a href="#" onclick="navigateToPath('')">根目錄</a>
+                </li>
+            `);
+
+            // Add breadcrumbs
+            breadcrumbs.forEach((crumb, index) => {
+                if (index === breadcrumbs.length - 1) {
+                    breadcrumbContainer.append(`
+                        <li class="breadcrumb-item active">${escapeHtml(crumb.display_name)}</li>
+                    `);
+                } else {
+                    breadcrumbContainer.append(`
+                        <li class="breadcrumb-item">
+                            <a href="#" onclick="navigateToPath('${crumb.path}')">${escapeHtml(crumb.display_name)}</a>
+                        </li>
+                    `);
+                }
+            });
+        }
+
+        function navigateToPath(path) {
+            loadToolsData(path);
+        }
+
+        function searchTools() {
+            const query = $('#toolsSearch').val().trim();
+            if (!query) {
+                alert('請輸入搜尋關鍵字');
+                return;
+            }
+
+            $('#toolsLoading').show();
+            $('#toolsContainer').hide();
+
+            fetch(`${getApiBaseUrl()}/search?q=${encodeURIComponent(query)}`, {
+                headers: getAuthHeaders()
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Search failed');
+                }
+                return response.json();
+            })
+            .then(data => {
+                displaySearchResults(data.results || [], query);
+                $('#toolsLoading').hide();
+                $('#toolsContainer').show();
+            })
+            .catch(error => {
+                console.error('Error searching tools:', error);
+                alert('搜尋失敗');
+                $('#toolsLoading').hide();
+            });
+        }
+
+        function displaySearchResults(results, query) {
+            const grid = $('#toolsGrid');
+            grid.empty();
+
+            // Update breadcrumb to show search
+            $('#toolsBreadcrumb').html(`
+                <li class="breadcrumb-item">
+                    <a href="#" onclick="navigateToPath('')">根目錄</a>
+                </li>
+                <li class="breadcrumb-item active">搜尋結果: "${escapeHtml(query)}"</li>
+            `);
+
+            if (results.length === 0) {
+                grid.html(`
+                    <div class="col-12">
+                        <div class="text-center text-muted py-5">
+                            <i class="fas fa-search fa-3x mb-3"></i>
+                            <h5>沒有找到相關工具</h5>
+                            <p>請嘗試其他關鍵字</p>
+                            <button class="btn btn-primary" onclick="navigateToPath('')">返回瀏覽</button>
+                        </div>
+                    </div>
+                `);
+                return;
+            }
+
+            results.forEach(result => {
+                const card = $(`
+                    <div class="col-md-6 col-lg-4 mb-3">
+                        <div class="card tool-card h-100">
+                            <div class="card-body">
+                                <div class="d-flex align-items-start justify-content-between">
+                                    <div class="flex-grow-1">
+                                        <h6 class="card-title">
+                                            <i class="fas fa-file-alt me-2"></i>
+                                            ${escapeHtml(result.display_name)}
+                                        </h6>
+                                        <small class="text-muted">${escapeHtml(result.path_display)}</small>
+                                        <br><small class="text-info">匹配類型: ${result.match_type === 'name' ? '名稱' : '內容'}</small>
+                                    </div>
+                                    <span class="badge bg-success ms-2">工具</span>
+                                </div>
+                                <div class="mt-3">
+                                    <button class="btn btn-sm btn-outline-primary me-1" onclick="editTool('${result.path}')">
+                                        <i class="fas fa-edit"></i> 編輯
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" onclick="deleteTool('${result.path}')">
+                                        <i class="fas fa-trash"></i> 刪除
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `);
+                grid.append(card);
+            });
+        }
+
+        function deleteTool(toolPath) {
+            if (!confirm(`確定要刪除工具 "${toolPath}" 嗎？此操作不可撤銷，但會保留備份。`)) {
+                return;
+            }
+
+            fetch(`${getApiBaseUrl()}/admin/tools/${encodeURIComponent(toolPath)}`, {
+                method: 'DELETE',
+                headers: getAuthHeaders()
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => {
+                        throw new Error(err.detail || 'Delete tool failed');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                alert('工具刪除成功！備份已保存至: ' + data.backup_location);
+                refreshToolsList();
+            })
+            .catch(error => {
+                console.error('Error deleting tool:', error);
+                alert(`刪除工具失敗: ${error.message}`);
+            });
+        }
+
+        function checkDeleteCategory(categoryPath) {
+            // First get category info to check if it's empty
+            fetch(`${getApiBaseUrl()}/admin/category-info/${encodeURIComponent(categoryPath)}`, {
+                headers: getAuthHeaders()
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to get category info');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (!data.can_delete) {
+                    alert(`無法刪除分類 "${categoryPath}"：\n` +
+                          `該分類包含 ${data.tool_count} 個工具和 ${data.subcategory_count} 個子分類。\n` +
+                          `請先刪除所有內容再嘗試刪除分類。`);
+                    return;
+                }
+
+                // Category is empty, confirm deletion
+                if (confirm(`確定要刪除空分類 "${categoryPath}" 嗎？此操作不可撤銷，但會保留備份。`)) {
+                    deleteCategory(categoryPath);
+                }
+            })
+            .catch(error => {
+                console.error('Error checking category:', error);
+                alert(`檢查分類狀態失敗: ${error.message}`);
+            });
+        }
+
+        function deleteCategory(categoryPath) {
+            fetch(`${getApiBaseUrl()}/admin/categories/${encodeURIComponent(categoryPath)}`, {
+                method: 'DELETE',
+                headers: getAuthHeaders()
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => {
+                        throw new Error(err.detail || 'Delete category failed');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                alert('空分類刪除成功！備份已保存至: ' + data.backup_location);
+                refreshToolsList();
+            })
+            .catch(error => {
+                console.error('Error deleting category:', error);
+                alert(`刪除分類失敗: ${error.message}`);
+            });
+        }
+
+        function editTool(toolPath) {
+            // This would open the tool editor - for now just redirect to the tool
+            alert(`編輯工具功能待實現: ${toolPath}`);
+            // TODO: Implement tool editing functionality
+        }
+
+        // Add event listener for search input
+        $(document).ready(function() {
+            $('#toolsSearch').on('keypress', function(e) {
+                if (e.which === 13) { // Enter key
+                    searchTools();
+                }
+            });
+
+            // Initialize tools tab when clicked
+            $('#tools-tab').on('click', function() {
+                if (currentToolsList.length === 0) {
+                    loadToolsData('');
+                }
+            });
+        });
 
         function validateEditPassword() {
             const password = $('#editPassword').val();

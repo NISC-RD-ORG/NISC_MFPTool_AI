@@ -1056,6 +1056,198 @@ async def get_user(user_id: int, current_user = Depends(get_current_user)):
         logger.error(f"Error getting user: {e}")
         raise HTTPException(status_code=500, detail=f"Error retrieving user: {str(e)}")
 
+# Tool and Category Management APIs (Admin only)
+@app.delete("/admin/tools/{tool_path:path}")
+async def delete_tool(tool_path: str, current_user = Depends(get_current_user)):
+    """Delete a tool (Admin only)"""
+    try:
+        check_admin_permission(current_user)
+        
+        tools_path = get_tools_path()
+        full_tool_path = tools_path / tool_path
+        
+        if not full_tool_path.exists():
+            raise HTTPException(status_code=404, detail="Tool not found")
+        
+        # Check if it's actually a tool (has content.md)
+        content_file = full_tool_path / "content.md"
+        if not content_file.exists():
+            raise HTTPException(status_code=400, detail="Path is not a tool")
+        
+        # Create backup before deletion
+        backup_dir = tools_path / "deleted_backups" / datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        
+        tool_name = full_tool_path.name
+        backup_path = backup_dir / tool_name
+        
+        # Copy tool to backup location
+        shutil.copytree(full_tool_path, backup_path)
+        
+        # Delete the tool directory
+        shutil.rmtree(full_tool_path)
+        
+        logger.info(f"Admin {current_user['account']} deleted tool: {tool_path}")
+        return {
+            "message": "Tool deleted successfully",
+            "tool_path": tool_path,
+            "backup_location": str(backup_path)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting tool {tool_path}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error deleting tool: {str(e)}")
+
+@app.delete("/admin/categories/{category_path:path}")
+async def delete_empty_category(category_path: str, current_user = Depends(get_current_user)):
+    """Delete an empty category/subcategory (Admin only)"""
+    try:
+        check_admin_permission(current_user)
+        
+        tools_path = get_tools_path()
+        full_category_path = tools_path / category_path
+        
+        if not full_category_path.exists():
+            raise HTTPException(status_code=404, detail="Category not found")
+        
+        if not full_category_path.is_dir():
+            raise HTTPException(status_code=400, detail="Path is not a directory")
+        
+        # Check if category is empty (no tools or subcategories)
+        has_content = False
+        for item in full_category_path.iterdir():
+            if item.is_dir():
+                # Check if this is a tool (has content.md) or has any content
+                content_file = item / "content.md"
+                if content_file.exists():
+                    has_content = True
+                    break
+                # Check if subdirectory has any content recursively
+                if any(subitem.is_dir() for subitem in item.iterdir()):
+                    has_content = True
+                    break
+                # Check if subdirectory has any tools
+                if has_tools_recursive(item):
+                    has_content = True
+                    break
+        
+        if has_content:
+            raise HTTPException(
+                status_code=400, 
+                detail="Category is not empty. Please delete all tools and subcategories first."
+            )
+        
+        # Create backup before deletion
+        backup_dir = tools_path / "deleted_backups" / datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        
+        category_name = full_category_path.name
+        backup_path = backup_dir / f"category_{category_name}"
+        
+        # Copy category to backup location
+        shutil.copytree(full_category_path, backup_path)
+        
+        # Delete the category directory
+        shutil.rmtree(full_category_path)
+        
+        logger.info(f"Admin {current_user['account']} deleted empty category: {category_path}")
+        return {
+            "message": "Empty category deleted successfully",
+            "category_path": category_path,
+            "backup_location": str(backup_path)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting category {category_path}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error deleting category: {str(e)}")
+
+def has_tools_recursive(directory_path: Path) -> bool:
+    """Recursively check if a directory contains any tools"""
+    try:
+        for item in directory_path.iterdir():
+            if not item.is_dir():
+                continue
+            
+            content_file = item / "content.md"
+            if content_file.exists():
+                return True
+            
+            # Recursively check subdirectories
+            if has_tools_recursive(item):
+                return True
+        
+        return False
+    except Exception as e:
+        logger.warning(f"Error checking tools in {directory_path}: {e}")
+        return True  # Assume has content if error occurs for safety
+
+@app.get("/admin/category-info/{category_path:path}")
+async def get_category_info(category_path: str, current_user = Depends(get_current_user)):
+    """Get information about a category for deletion purposes (Admin only)"""
+    try:
+        check_admin_permission(current_user)
+        
+        tools_path = get_tools_path()
+        full_category_path = tools_path / category_path
+        
+        if not full_category_path.exists():
+            raise HTTPException(status_code=404, detail="Category not found")
+        
+        if not full_category_path.is_dir():
+            raise HTTPException(status_code=400, detail="Path is not a directory")
+        
+        # Count tools and subcategories
+        tool_count = 0
+        subcategory_count = 0
+        items = []
+        
+        for item in full_category_path.iterdir():
+            if not item.is_dir():
+                continue
+            
+            content_file = item / "content.md"
+            if content_file.exists():
+                # This is a tool
+                tool_count += 1
+                items.append({
+                    "name": item.name,
+                    "type": "tool",
+                    "path": f"{category_path}/{item.name}"
+                })
+            else:
+                # This is a subcategory
+                subcategory_count += 1
+                sub_tool_count = count_tools_recursive(item)
+                items.append({
+                    "name": item.name,
+                    "type": "category",
+                    "path": f"{category_path}/{item.name}",
+                    "tool_count": sub_tool_count
+                })
+        
+        is_empty = tool_count == 0 and subcategory_count == 0
+        can_delete = is_empty
+        
+        return {
+            "category_path": category_path,
+            "is_empty": is_empty,
+            "can_delete": can_delete,
+            "tool_count": tool_count,
+            "subcategory_count": subcategory_count,
+            "items": items,
+            "total_items": len(items)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting category info {category_path}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error getting category info: {str(e)}")
+
 @app.on_event("startup")
 async def startup_event():
     """Run initialization on startup"""
