@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Token Check</title>
+    <script src="config.js"></script>
+</head>
+<body>
+    <h1>Token 檢查</h1>
+    <button id="checkToken">檢查 Token</button>
+    <button id="autoLogin">自動登錄</button>
+    <div id="results"></div>
+
+    <script>
+        document.getElementById('checkToken').onclick = function() {
+            const token = localStorage.getItem('access_token');
+            const userInfo = localStorage.getItem('user_info');
+            
+            document.getElementById('results').innerHTML = 
+                '<h3>Local Storage 狀態:</h3>' +
+                '<p>Token: ' + (token ? token.substring(0, 50) + '...' : '無') + '</p>' +
+                '<p>User Info: ' + (userInfo || '無') + '</p>';
+        };
+
+        document.getElementById('autoLogin').onclick = async function() {
+            try {
+                console.log('Attempting login to:', getApiBaseUrl());
+                
+                const response = await fetch(`${getApiBaseUrl()}/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        account: 'admin',
+                        password: 'nisc27978831'
+                    })
+                });
+                
+                console.log('Login response status:', response.status);
+                const data = await response.json();
+                console.log('Login response data:', data);
+                
+                if (response.ok) {
+                    localStorage.setItem('access_token', data.access_token);
+                    localStorage.setItem('user_info', JSON.stringify(data.user));
+                    document.getElementById('results').innerHTML = 
+                        '<p style="color: green;">登錄成功！現在可以訪問主頁面了。</p>' +
+                        '<a href="index_hierarchical.html">前往主頁面</a>';
+                } else {
+                    document.getElementById('results').innerHTML = 
+                        '<p style="color: red;">登錄失敗: ' + JSON.stringify(data) + '</p>';
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                document.getElementById('results').innerHTML = 
+                    '<p style="color: red;">登錄錯誤: ' + error.message + '</p>';
+            }
+        };
+    </script>
+</body>
+</html>

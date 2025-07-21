@@ -548,9 +548,148 @@ async def list_tools_in_subcategory(model_name: str, category_name: str, subcate
         logger.error(f"Error listing tools: {e}")
         raise HTTPException(status_code=500, detail=f"Error retrieving tools: {str(e)}")
 
+@app.get("/browse")
+async def browse_dynamic_structure(path: str = "", current_user = Depends(get_current_user)):
+    """
+    Browse dynamic directory structure - returns both subcategories and tools at any level
+    
+    Args:
+        path: Relative path from tools directory (e.g., 'TaskalfaC3253' or 'TaskalfaC3253/4-10定期保養步驟')
+        
+    Returns:
+        - items: Combined list of subcategories and tools
+        - current_path: Current directory path
+        - breadcrumbs: Navigation breadcrumbs
+        - parent_path: Path to parent directory (null if at root)
+    """
+    try:
+        tools_path = get_tools_path()
+        
+        # Parse and validate the path
+        if path:
+            current_path = tools_path / path
+            path_parts = Path(path).parts
+        else:
+            current_path = tools_path
+            path_parts = ()
+        
+        if not current_path.exists() or not current_path.is_dir():
+            raise HTTPException(status_code=404, detail="Path not found")
+        
+        # Build breadcrumbs for navigation
+        breadcrumbs = []
+        breadcrumb_path = ""
+        
+        for i, part in enumerate(path_parts):
+            if i == 0:
+                breadcrumb_path = part
+            else:
+                breadcrumb_path = f"{breadcrumb_path}/{part}"
+            
+            breadcrumbs.append({
+                "name": part,
+                "display_name": part,
+                "path": breadcrumb_path
+            })
+        
+        # Get parent path
+        parent_path = None
+        if path_parts:
+            if len(path_parts) == 1:
+                parent_path = ""
+            else:
+                parent_path = "/".join(path_parts[:-1])
+        
+        # Scan current directory for items
+        items = []
+        
+        for item in current_path.iterdir():
+            if not item.is_dir():
+                continue
+            
+            # Check if this directory contains content.md (making it a tool)
+            content_file = item / "content.md"
+            
+            if content_file.exists():
+                # This is a tool
+                item_path = f"{path}/{item.name}" if path else item.name
+                
+                # Try to read metadata for display name
+                metadata_file = item / "metadata.json"
+                display_name = item.name
+                
+                try:
+                    if metadata_file.exists():
+                        with open(metadata_file, 'r', encoding='utf-8') as f:
+                            metadata = json.load(f)
+                            display_name = metadata.get('display_name', item.name)
+                except Exception as e:
+                    logger.warning(f"Error reading metadata for {item}: {e}")
+                
+                items.append({
+                    "name": item.name,
+                    "display_name": display_name,
+                    "type": "tool",
+                    "path": item_path,
+                    "is_tool": True
+                })
+            else:
+                # This is a subcategory - count tools in it recursively
+                item_path = f"{path}/{item.name}" if path else item.name
+                tool_count = count_tools_recursive(item)
+                
+                items.append({
+                    "name": item.name,
+                    "display_name": item.name,
+                    "type": "category",
+                    "path": item_path,
+                    "is_tool": False,
+                    "tool_count": tool_count
+                })
+        
+        # Sort items: categories first, then tools, both alphabetically
+        items.sort(key=lambda x: (x["is_tool"], x["name"]))
+        
+        result = {
+            "items": items,
+            "current_path": path,
+            "breadcrumbs": breadcrumbs,
+            "parent_path": parent_path,
+            "count": len(items)
+        }
+        
+        logger.info(f"Browse path '{path}' returned {len(items)} items")
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error browsing path '{path}': {e}")
+        raise HTTPException(status_code=500, detail=f"Error browsing path: {str(e)}")
+
+def count_tools_recursive(directory_path: Path) -> int:
+    """Recursively count tools (directories with content.md) in a directory"""
+    try:
+        count = 0
+        for item in directory_path.iterdir():
+            if not item.is_dir():
+                continue
+            
+            content_file = item / "content.md"
+            if content_file.exists():
+                count += 1
+            else:
+                # Recursively count in subdirectories
+                count += count_tools_recursive(item)
+        
+        return count
+    except Exception as e:
+        logger.warning(f"Error counting tools in {directory_path}: {e}")
+        return 0
+
 @app.get("/search")
 async def search_tools(q: str, current_user = Depends(get_current_user)):
-    """Search tools across all models and categories"""
+    """Search tools across all models and categories using dynamic structure"""
     try:
         if not q or len(q.strip()) < 1:
             return {"results": [], "count": 0}
@@ -559,73 +698,88 @@ async def search_tools(q: str, current_user = Depends(get_current_user)):
         tools_path = get_tools_path()
         results = []
         
-        # Search through all models, categories, subcategories, and tools
-        for model_dir in tools_path.iterdir():
-            if not model_dir.is_dir():
-                continue
-                
-            model_name = model_dir.name
-            
-            for category_dir in model_dir.iterdir():
-                if not category_dir.is_dir():
-                    continue
-                    
-                category_name = category_dir.name
-                
-                for subcategory_dir in category_dir.iterdir():
-                    if not subcategory_dir.is_dir():
+        # Recursively search through all directories
+        def search_directory(current_dir: Path, relative_path: str = ""):
+            """Recursively search for tools in directory structure"""
+            try:
+                for item in current_dir.iterdir():
+                    if not item.is_dir():
                         continue
-                        
-                    subcategory_name = subcategory_dir.name
                     
-                    for tool_dir in subcategory_dir.iterdir():
-                        if not tool_dir.is_dir():
-                            continue
-                            
-                        content_file = tool_dir / "content.md"
-                        if not content_file.exists():
-                            continue
-                            
-                        tool_name = tool_dir.name
+                    item_relative_path = f"{relative_path}/{item.name}" if relative_path else item.name
+                    content_file = item / "content.md"
+                    
+                    if content_file.exists():
+                        # This is a tool
+                        tool_name = item.name
                         
                         # Check if query matches tool name (case insensitive)
                         if query in tool_name.lower():
-                            tool_path = f"{model_name}/{category_name}/{subcategory_name}/{tool_name}"
-                            path_display = f"{model_name} > {category_name} > {subcategory_name}"
+                            # Build breadcrumb path for display
+                            path_parts = item_relative_path.split("/")
+                            breadcrumb_display = " > ".join(path_parts[:-1]) if len(path_parts) > 1 else "根目錄"
+                            
+                            # Try to get display name from metadata
+                            display_name = tool_name
+                            try:
+                                metadata_file = item / "metadata.json"
+                                if metadata_file.exists():
+                                    with open(metadata_file, 'r', encoding='utf-8') as f:
+                                        metadata = json.load(f)
+                                        display_name = metadata.get('display_name', tool_name)
+                            except Exception:
+                                pass
                             
                             results.append({
                                 "name": tool_name,
-                                "display_name": tool_name,
-                                "path": tool_path,
-                                "path_display": path_display,
-                                "model": model_name,
-                                "category": category_name,
-                                "subcategory": subcategory_name
+                                "display_name": display_name,
+                                "path": item_relative_path,
+                                "path_display": breadcrumb_display,
+                                "type": "tool",
+                                "match_type": "name"
                             })
-                            
-                        # Also search in content.md file for more comprehensive search
+                        
+                        # Also search in content.md file for comprehensive search
                         else:
                             try:
                                 with open(content_file, 'r', encoding='utf-8') as f:
                                     content = f.read().lower()
                                     if query in content:
-                                        tool_path = f"{model_name}/{category_name}/{subcategory_name}/{tool_name}"
-                                        path_display = f"{model_name} > {category_name} > {subcategory_name}"
+                                        path_parts = item_relative_path.split("/")
+                                        breadcrumb_display = " > ".join(path_parts[:-1]) if len(path_parts) > 1 else "根目錄"
+                                        
+                                        # Try to get display name from metadata
+                                        display_name = tool_name
+                                        try:
+                                            metadata_file = item / "metadata.json"
+                                            if metadata_file.exists():
+                                                with open(metadata_file, 'r', encoding='utf-8') as f:
+                                                    metadata = json.load(f)
+                                                    display_name = metadata.get('display_name', tool_name)
+                                        except Exception:
+                                            pass
                                         
                                         results.append({
                                             "name": tool_name,
-                                            "display_name": tool_name,
-                                            "path": tool_path,
-                                            "path_display": path_display,
-                                            "model": model_name,
-                                            "category": category_name,
-                                            "subcategory": subcategory_name,
+                                            "display_name": display_name,
+                                            "path": item_relative_path,
+                                            "path_display": breadcrumb_display,
+                                            "type": "tool",
                                             "match_type": "content"
                                         })
                             except Exception as e:
                                 logger.warning(f"Error reading content file {content_file}: {e}")
+                    else:
+                        # This is a category, continue searching recursively
+                        search_directory(item, item_relative_path)
+                        
+            except Exception as e:
+                logger.warning(f"Error searching directory {current_dir}: {e}")
         
-        # Remove duplicates and limit results
+        # Start searching from tools root
+        search_directory(tools_path)
+        
+        # Remove duplicates based on path
         seen_paths = set()
         unique_results = []
         for result in results:
@@ -633,6 +787,9 @@ async def search_tools(q: str, current_user = Depends(get_current_user)):
                 seen_paths.add(result["path"])
                 unique_results.append(result)
                 
+        # Sort results: name matches first, then content matches, both alphabetically
+        unique_results.sort(key=lambda x: (x["match_type"] != "name", x["display_name"]))
+        
         # Limit to 20 results to avoid overwhelming the UI
         limited_results = unique_results[:20]
         
@@ -640,7 +797,7 @@ async def search_tools(q: str, current_user = Depends(get_current_user)):
         return {"results": limited_results, "count": len(limited_results), "query": q}
         
     except Exception as e:
-        logger.info(f"Error searching tools: {e}")
+        logger.error(f"Error searching tools: {e}")
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
 
 @app.put("/edittool/{tool_path:path}")

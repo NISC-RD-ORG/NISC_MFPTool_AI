@@ -122,6 +122,15 @@
             background: #ffeaa7;
         }
         
+        .list-item.category {
+            background: #fff3cd;
+            border-color: #ffeaa7;
+        }
+        
+        .list-item.category:hover {
+            background: #ffeaa7;
+        }
+        
         .list-item.tool {
             background: #d4edda;
             border-color: #c3e6cb;
@@ -507,7 +516,9 @@
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="config.js"></script>
     <script>
-        let currentPath = [];
+        // Global state management
+        let currentPath = '';  // Store current browse path
+        let currentBrowseData = null;  // Store current browse API response
         let navigationHistory = [];
         let searchTimeout;
         let allTools = [];
@@ -519,6 +530,7 @@
         $(document).ready(function() {
             checkAuth();
             initializeSearch();
+            loadContent('');  // Load root content
         });
 
         function initializeSearch() {
@@ -642,46 +654,36 @@
             $('#clearSearch').hide();
         }
 
+        function hideSearchResults() {
+            $('#searchResults').hide();
+        }
+
         function loadToolFromSearch(toolPath, displayName) {
             // If in edit mode, exit it first
             if (isEditMode) {
                 exitEditMode();
             }
             
-            // Parse the tool path to extract model, category, subcategory, and tool
+            // Parse the tool path to determine the parent category
             const pathParts = toolPath.split('/');
             
-            if (pathParts.length >= 4) {
-                const model = pathParts[0];
-                const category = pathParts[1];
-                const subcategory = pathParts[2];
+            if (pathParts.length >= 2) {
+                // Navigate to the parent category first
+                const parentPath = pathParts.slice(0, -1).join('/');
                 
-                // Set the current path to the subcategory level
-                currentPath = [model, category, subcategory];
-                updateBreadcrumb();
+                // Load the parent category
+                loadContent(parentPath);
                 
-                // Update sidebar title
-                $('#sidebarTitle').html(`<i class="fas fa-wrench"></i> 工具列表`);
-                $('#contentTitle').text(`${model} > ${category} > ${subcategory} - ${displayName}`);
-                
-                // Load all tools in this subcategory
-                loadTools(model, category, subcategory);
-                
-                // Load the specific tool content
-                loadToolContent(toolPath, displayName);
-                
-                // After a short delay, highlight the selected tool in the list
+                // After loading, select and load the tool
                 setTimeout(() => {
                     const toolName = pathParts[pathParts.length - 1];
                     $('.list-item').removeClass('selected');
                     $(`.list-item[data-name="${toolName}"]`).addClass('selected');
+                    loadToolContent(toolPath, displayName);
                 }, 500);
                 
             } else {
                 // Fallback: if path parsing fails, just load the tool content
-                currentPath = [];
-                updateBreadcrumb();
-                $('#sidebarTitle').html('<i class="fas fa-search"></i> 搜尋結果');
                 loadToolContent(toolPath, displayName);
             }
         }
@@ -714,8 +716,8 @@
                     $('#adminMenu').show();
                 }
                 
-                // Load models
-                loadModels();
+                // Load initial content
+                loadContent('');
             })
             .catch(error => {
                 console.error('Auth check failed:', error);
@@ -725,192 +727,97 @@
             });
         }
 
-        function updateBreadcrumb() {
-            let breadcrumbHtml = '<i class="fas fa-home"></i> ';
-            if (currentPath.length === 0) {
-                breadcrumbHtml += '首頁';
-            } else {
-                breadcrumbHtml += '<a onclick="goToLevel(0)">首頁</a>';
-                for (let i = 0; i < currentPath.length; i++) {
-                    breadcrumbHtml += ' > ';
-                    if (i === currentPath.length - 1) {
-                        breadcrumbHtml += currentPath[i];
-                    } else {
-                        breadcrumbHtml += `<a onclick="goToLevel(${i + 1})">${currentPath[i]}</a>`;
-                    }
-                }
-            }
-            $('#breadcrumb').html(breadcrumbHtml);
-            
-            // Show/hide back button
-            if (currentPath.length > 0) {
-                $('#backButton').show();
-            } else {
-                $('#backButton').hide();
-            }
-        }
-
-        function goToLevel(level) {
-            currentPath = currentPath.slice(0, level);
-            clearSearchBox(); // Clear search when navigating
-            
-            if (level === 0) {
-                loadModels();
-            } else if (level === 1) {
-                loadCategories(currentPath[0]);
-            } else if (level === 2) {
-                loadSubcategories(currentPath[0], currentPath[1]);
-            } else if (level === 3) {
-                loadTools(currentPath[0], currentPath[1], currentPath[2]);
-            }
-        }
-
-        function goBack() {
-            if (currentPath.length > 0) {
-                goToLevel(currentPath.length - 1);
-            }
-        }
-
-        function loadModels() {
-            currentPath = [];
-            updateBreadcrumb();
-            $('#sidebarTitle').html('<i class="fas fa-tools"></i> 機型列表');
-            $('#contentTitle').text('請選擇機型');
+        function loadContent(path = '') {
+            console.log('Loading content for path:', path);
+            currentPath = path;
             
             // Clear search when navigating
             clearSearchBox();
             
-            fetch(`${getApiBaseUrl()}/models`, {
-                headers: getAuthHeaders()
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Failed to load models');
-                }
-                return response.json();
-            })
-            .then(data => {
-                displayList(data.models || [], 'model');
-            })
-            .catch(error => {
-                console.error('Error loading models:', error);
-                handleError(error);
-            });
-        }
-
-        function loadCategories(modelName) {
-            currentPath = [modelName];
-            updateBreadcrumb();
-            $('#sidebarTitle').html(`<i class="fas fa-list"></i> ${modelName} 分類`);
-            $('#contentTitle').text(`${modelName} - 請選擇分類`);
+            const url = path ? 
+                `${getApiBaseUrl()}/browse?path=${encodeURIComponent(path)}` : 
+                `${getApiBaseUrl()}/browse`;
             
-            fetch(`${getApiBaseUrl()}/models/${encodeURIComponent(modelName)}/categories`, {
+            fetch(url, {
                 headers: getAuthHeaders()
             })
             .then(response => {
                 if (!response.ok) {
-                    throw new Error('Failed to load categories');
+                    throw new Error('Failed to load content');
                 }
                 return response.json();
             })
             .then(data => {
-                displayList(data.categories || [], 'category');
+                console.log('Browse API response:', data);
+                currentBrowseData = data;
+                updateBreadcrumb(data.breadcrumbs, data.parent_path);
+                displayMixedList(data.items || []);
+                updateSidebarTitle(path, data.items);
+                updateContentTitle(path);
             })
             .catch(error => {
-                console.error('Error loading categories:', error);
+                console.error('Error loading content:', error);
                 handleError(error);
             });
         }
 
-        function loadSubcategories(modelName, categoryName) {
-            currentPath = [modelName, categoryName];
-            updateBreadcrumb();
-            $('#sidebarTitle').html(`<i class="fas fa-list"></i> 子分類`);
-            $('#contentTitle').text(`${modelName} > ${categoryName} - 請選擇子分類`);
-            
-            fetch(`${getApiBaseUrl()}/models/${encodeURIComponent(modelName)}/categories/${encodeURIComponent(categoryName)}/subcategories`, {
-                headers: getAuthHeaders()
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Failed to load subcategories');
-                }
-                return response.json();
-            })
-            .then(data => {
-                displayList(data.subcategories || [], 'subcategory');
-            })
-            .catch(error => {
-                console.error('Error loading subcategories:', error);
-                handleError(error);
-            });
+        function updateSidebarTitle(path, items) {
+            if (!path) {
+                $('#sidebarTitle').html('<i class="fas fa-home"></i> 根目錄');
+            } else {
+                const pathParts = path.split('/');
+                const lastPart = pathParts[pathParts.length - 1];
+                
+                // Check if current path has tools
+                const hasTools = items && items.some(item => item.type === 'tool');
+                const icon = hasTools ? 'fas fa-wrench' : 'fas fa-folder';
+                
+                $('#sidebarTitle').html(`<i class="${icon}"></i> ${lastPart}`);
+            }
         }
 
-        function loadTools(modelName, categoryName, subcategoryName) {
-            currentPath = [modelName, categoryName, subcategoryName];
-            updateBreadcrumb();
-            $('#sidebarTitle').html(`<i class="fas fa-wrench"></i> 工具列表`);
-            $('#contentTitle').text(`${modelName} > ${categoryName} > ${subcategoryName} - 請選擇工具`);
-            
-            fetch(`${getApiBaseUrl()}/models/${encodeURIComponent(modelName)}/categories/${encodeURIComponent(categoryName)}/subcategories/${encodeURIComponent(subcategoryName)}/tools`, {
-                headers: getAuthHeaders()
-            })
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Failed to load tools');
-                }
-                return response.json();
-            })
-            .then(data => {
-                displayList(data.tools || [], 'tool');
-            })
-            .catch(error => {
-                console.error('Error loading tools:', error);
-                handleError(error);
-            });
+        function updateContentTitle(path) {
+            if (!path) {
+                $('#contentTitle').text('請選擇項目');
+            } else {
+                const pathParts = path.split('/');
+                const breadcrumb = pathParts.join(' > ');
+                $('#contentTitle').text(`${breadcrumb} - 請選擇項目`);
+            }
         }
 
-        function displayList(items, type) {
+        function displayMixedList(items) {
             const listContainer = $('#listContainer');
             listContainer.empty();
             
-            if (items.length > 0) {
+            if (items && items.length > 0) {
                 items.forEach(item => {
-                    const icon = getIconForType(type);
+                    const itemType = item.type || (item.is_tool ? 'tool' : 'category');
+                    const icon = getIconForType(itemType);
+                    const toolCount = item.tool_count ? ` (${item.tool_count} 工具)` : '';
+                    
                     const listItem = $(`
-                        <li class="list-item ${type}" data-name="${item.name}">
-                            <i class="${icon}"></i> ${item.display_name || item.name}
+                        <li class="list-item ${itemType}" data-name="${item.name}" data-type="${itemType}">
+                            <i class="${icon}"></i> ${item.display_name || item.name}${toolCount}
                         </li>
                     `);
                     
                     listItem.on('click', function() {
-                        handleItemClick(item, type);
+                        handleItemClick(item, itemType);
                     });
                     
                     listContainer.append(listItem);
                 });
             } else {
-                listContainer.append(`<li class="error">沒有找到${getTypeDisplayName(type)}</li>`);
+                listContainer.append(`<li class="error">沒有找到項目</li>`);
             }
         }
 
         function getIconForType(type) {
             switch(type) {
-                case 'model': return 'fas fa-desktop';
                 case 'category': return 'fas fa-folder';
-                case 'subcategory': return 'fas fa-folder-open';
                 case 'tool': return 'fas fa-wrench';
                 default: return 'fas fa-file';
-            }
-        }
-
-        function getTypeDisplayName(type) {
-            switch(type) {
-                case 'model': return '機型';
-                case 'category': return '分類';
-                case 'subcategory': return '子分類';
-                case 'tool': return '工具';
-                default: return '項目';
             }
         }
 
@@ -918,20 +825,51 @@
             $('.list-item').removeClass('selected');
             $(`.list-item[data-name="${item.name}"]`).addClass('selected');
             
-            switch(type) {
-                case 'model':
-                    loadCategories(item.name);
-                    break;
-                case 'category':
-                    loadSubcategories(currentPath[0], item.name);
-                    break;
-                case 'subcategory':
-                    loadTools(currentPath[0], currentPath[1], item.name);
-                    break;
-                case 'tool':
-                    loadToolContent(item.path || `${currentPath.join('/')}/${item.name}`, item.display_name || item.name);
-                    break;
+            if (type === 'category') {
+                // Navigate to subcategory
+                loadContent(item.path);
+            } else if (type === 'tool') {
+                // Load tool content
+                loadToolContent(item.path, item.display_name || item.name);
             }
+        }
+
+        function goBack() {
+            if (currentBrowseData && currentBrowseData.parent_path !== null) {
+                loadContent(currentBrowseData.parent_path);
+            }
+        }
+
+        function updateBreadcrumb(breadcrumbs = [], parentPath = null) {
+            const breadcrumbContainer = $('#breadcrumb');
+            breadcrumbContainer.empty();
+            
+            // Add home link
+            const homeLink = $(`<a href="#" onclick="loadContent('')">🏠 根目錄</a>`);
+            breadcrumbContainer.append(homeLink);
+            
+            // Add breadcrumb links
+            if (breadcrumbs && breadcrumbs.length > 0) {
+                breadcrumbs.forEach((crumb, index) => {
+                    breadcrumbContainer.append(' > ');
+                    const crumbLink = $(`<a href="#" onclick="loadContent('${crumb.path}')">${crumb.display_name}</a>`);
+                    breadcrumbContainer.append(crumbLink);
+                });
+            }
+            
+            // Show/hide back button
+            const backButton = $('#backButton');
+            if (parentPath !== null) {
+                backButton.show();
+            } else {
+                backButton.hide();
+            }
+        }
+
+        function clearSearchBox() {
+            $('#searchBox').val('');
+            $('#clearSearch').hide();
+            $('#searchResults').hide();
         }
 
         function loadToolContent(toolPath, displayName) {

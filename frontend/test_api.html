@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Test</title>
+    <script src="config.js"></script>
+</head>
+<body>
+    <h1>API 測試頁面</h1>
+    <button id="loginBtn">登錄</button>
+    <button id="testApiBtn">測試 API</button>
+    <div id="results"></div>
+
+    <script>
+        document.getElementById('loginBtn').onclick = async function() {
+            try {
+                const response = await fetch(`${getApiBaseUrl()}/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        account: 'admin',
+                        password: 'nisc27978831'
+                    })
+                });
+                
+                const data = await response.json();
+                if (response.ok) {
+                    localStorage.setItem('access_token', data.access_token);
+                    localStorage.setItem('user_info', JSON.stringify(data.user));
+                    document.getElementById('results').innerHTML = '<p>登錄成功！Token: ' + data.access_token.substring(0, 20) + '...</p>';
+                } else {
+                    document.getElementById('results').innerHTML = '<p>登錄失敗: ' + JSON.stringify(data) + '</p>';
+                }
+            } catch (error) {
+                document.getElementById('results').innerHTML = '<p>登錄錯誤: ' + error.message + '</p>';
+            }
+        };
+
+        document.getElementById('testApiBtn').onclick = async function() {
+            try {
+                const token = localStorage.getItem('access_token');
+                if (!token) {
+                    document.getElementById('results').innerHTML = '<p>請先登錄</p>';
+                    return;
+                }
+
+                const response = await fetch(`${getApiBaseUrl()}/models/TaskalfaC3253/categories`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                console.log('API Response:', data);
+                
+                document.getElementById('results').innerHTML = 
+                    '<h3>API 回應:</h3>' +
+                    '<p>Items 數量: ' + (data.items ? data.items.length : 'undefined') + '</p>' +
+                    '<p>Categories 數量: ' + (data.categories ? data.categories.length : 'undefined') + '</p>' +
+                    '<p>Tools 數量: ' + (data.tools ? data.tools.length : 'undefined') + '</p>' +
+                    '<h4>Items 內容:</h4>' +
+                    '<pre>' + JSON.stringify(data.items, null, 2) + '</pre>';
+                    
+            } catch (error) {
+                document.getElementById('results').innerHTML = '<p>API 錯誤: ' + error.message + '</p>';
+            }
+        };
+    </script>
+</body>
+</html>

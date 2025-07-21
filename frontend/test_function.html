@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Function Test</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        .list-item { padding: 10px; border: 1px solid #ddd; margin: 5px 0; cursor: pointer; }
+        .list-item.category { background-color: #e7f3ff; }
+        .list-item.tool { background-color: #fff3cd; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>displayMixedList 函數測試</h1>
+    <button id="testBtn">測試 displayMixedList</button>
+    <div id="listContainer"></div>
+
+    <script>
+        function getIconForType(type) {
+            switch(type) {
+                case 'category': return 'fas fa-folder';
+                case 'tool': return 'fas fa-wrench';
+                default: return 'fas fa-file';
+            }
+        }
+
+        function handleItemClick(item, type) {
+            alert(`點擊了 ${type}: ${item.name}`);
+        }
+
+        function displayMixedList(items, categories, tools) {
+            const listContainer = $('#listContainer');
+            listContainer.empty();
+            
+            console.log('=== displayMixedList DEBUG START ===');
+            console.log('Raw parameters:', { items, categories, tools });
+            console.log('Items type:', typeof items, 'isArray:', Array.isArray(items));
+            console.log('Items content:', items);
+            console.log('Items length:', items ? items.length : 'null/undefined');
+            
+            // Use items array if available (new API format)
+            if (items && Array.isArray(items)) {
+                console.log('>>> USING ITEMS ARRAY PATH <<<');
+                console.log('Items array length:', items.length);
+                
+                if (items.length === 0) {
+                    console.log('Items array is empty, showing no items message');
+                    listContainer.append(`<li class="error">沒有找到項目</li>`);
+                } else {
+                    console.log('Processing', items.length, 'items:');
+                    items.forEach((item, index) => {
+                        console.log(`Processing item ${index}:`, item);
+                        const itemType = item.type || (item.is_tool ? 'tool' : 'category');
+                        const icon = getIconForType(itemType);
+                        const toolCount = item.tool_count ? ` (${item.tool_count} 工具)` : '';
+                        
+                        console.log(`Creating list item for: ${item.name}, type: ${itemType}`);
+                        
+                        const listItem = $(`
+                            <li class="list-item ${itemType}" data-name="${item.name}" data-type="${itemType}">
+                                <i class="${icon}"></i> ${item.display_name || item.name}${toolCount}
+                            </li>
+                        `);
+                        
+                        listItem.on('click', function() {
+                            handleItemClick(item, itemType);
+                        });
+                        
+                        listContainer.append(listItem);
+                        console.log(`Item ${index} added to container`);
+                    });
+                }
+                
+                console.log('Final container children count:', listContainer.children().length);
+            }
+            // Fallback to separate arrays (backward compatibility)
+            else {
+                console.log('>>> USING SEPARATE ARRAYS PATH <<<');
+                console.log('Categories length:', categories ? categories.length : 'null/undefined');
+                console.log('Tools length:', tools ? tools.length : 'null/undefined');
+                console.log('Categories array:', categories);
+                console.log('Tools array:', tools);
+                
+                // Display categories first
+                if (categories && categories.length > 0) {
+                    console.log('Processing', categories.length, 'categories');
+                    categories.forEach((item, index) => {
+                        console.log(`Processing category ${index}:`, item);
+                        const icon = getIconForType('category');
+                        const toolCount = item.tool_count ? ` (${item.tool_count} 工具)` : '';
+                        const listItem = $(`
+                            <li class="list-item category" data-name="${item.name}" data-type="category">
+                                <i class="${icon}"></i> ${item.display_name || item.name}${toolCount}
+                            </li>
+                        `);
+                        
+                        listItem.on('click', function() {
+                            handleItemClick(item, 'category');
+                        });
+                        
+                        listContainer.append(listItem);
+                        console.log(`Category ${index} added to container`);
+                    });
+                }
+                
+                // Display tools after categories
+                if (tools && tools.length > 0) {
+                    console.log('Processing', tools.length, 'tools');
+                    tools.forEach((item, index) => {
+                        console.log(`Processing tool ${index}:`, item);
+                        const icon = getIconForType('tool');
+                        const listItem = $(`
+                            <li class="list-item tool" data-name="${item.name}" data-type="tool">
+                                <i class="${icon}"></i> ${item.display_name || item.name}
+                            </li>
+                        `);
+                        
+                        listItem.on('click', function() {
+                            handleItemClick(item, 'tool');
+                        });
+                        
+                        listContainer.append(listItem);
+                        console.log(`Tool ${index} added to container`);
+                    });
+                }
+                
+                console.log('Final container children count:', listContainer.children().length);
+                
+                // Show message if no items
+                if ((!categories || categories.length === 0) && (!tools || tools.length === 0)) {
+                    console.log('No categories or tools found, showing error message');
+                    listContainer.append(`<li class="error">沒有找到項目</li>`);
+                }
+            }
+            
+            console.log('=== displayMixedList DEBUG END ===');
+        }
+
+        document.getElementById('testBtn').onclick = function() {
+            // Test data from API response
+            const testData = {
+                "items": [
+                    {
+                        "name": "4-10定期保養步驟",
+                        "display_name": "4-10定期保養步驟",
+                        "path": "TaskalfaC3253/4-10定期保養步驟",
+                        "type": "category",
+                        "is_tool": false,
+                        "tool_count": 18
+                    },
+                    {
+                        "name": "5-1固件更新_",
+                        "display_name": "5-1固件更新_",
+                        "path": "TaskalfaC3253/5-1固件更新_",
+                        "type": "tool",
+                        "is_tool": true
+                    }
+                ],
+                "categories": [
+                    {
+                        "name": "4-10定期保養步驟",
+                        "display_name": "4-10定期保養步驟",
+                        "path": "TaskalfaC3253/4-10定期保養步驟",
+                        "type": "category",
+                        "is_tool": false,
+                        "tool_count": 18
+                    }
+                ],
+                "tools": [
+                    {
+                        "name": "5-1固件更新_",
+                        "display_name": "5-1固件更新_",
+                        "path": "TaskalfaC3253/5-1固件更新_",
+                        "type": "tool",
+                        "is_tool": true
+                    }
+                ]
+            };
+
+            console.log('Testing displayMixedList with sample data');
+            displayMixedList(testData.items || [], testData.categories || [], testData.tools || []);
+        };
+    </script>
+</body>
+</html>
