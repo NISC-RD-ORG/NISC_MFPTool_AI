@@ -13,10 +13,21 @@ import sqlite3
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 import bcrypt
+from contextlib import asynccontextmanager
 # from passlib.context import CryptContext  # Commented out due to compatibility issues
 from pydantic import BaseModel
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info("Starting application...")
+    # recreate_admin_user()  # Fix admin user password
+    debug_database_users()  # Debug database state
+    yield
+    # Shutdown
+    logger.info("Shutting down application...")
+
+app = FastAPI(lifespan=lifespan)
 
 # Add CORS middleware
 app.add_middleware(
@@ -75,6 +86,13 @@ class UserUpdateRequest(BaseModel):
     name: str = None
 
 class ToolEditRequest(BaseModel):
+    content: str
+
+class FileRequest(BaseModel):
+    file_path: str
+
+class FileSaveRequest(BaseModel):
+    file_path: str
     content: str
 
 def get_db_connection():
@@ -1248,13 +1266,6 @@ async def get_category_info(category_path: str, current_user = Depends(get_curre
         logger.error(f"Error getting category info {category_path}: {e}")
         raise HTTPException(status_code=500, detail=f"Error getting category info: {str(e)}")
 
-@app.on_event("startup")
-async def startup_event():
-    """Run initialization on startup"""
-    logger.info("Starting application...")
-    # recreate_admin_user()  # Fix admin user password
-    debug_database_users()  # Debug database state
-
 def recreate_admin_user():
     """Recreate admin user with correct password hash"""
     try:
@@ -1287,3 +1298,108 @@ def recreate_admin_user():
         
     except Exception as e:
         logger.error(f"Error recreating admin user: {e}")
+
+# File operations endpoints
+@app.post("/api/get-file")
+async def get_file(request: FileRequest, current_user = Depends(get_current_user)):
+    """Get file content"""
+    try:
+        # Check if user is admin
+        if current_user["type"] != 2:  # Only admin can access
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        file_path = request.file_path
+        logger.info(f"Requested file path: {file_path}")
+        
+        # Parse the path - expect format like "tool_path/filename.ext"
+        if '/' in file_path:
+            tool_path, filename = file_path.rsplit('/', 1)
+        else:
+            raise HTTPException(status_code=400, detail="Invalid file path format")
+        
+        # Use the same path resolution as gettool endpoint
+        tools_path = get_tools_path()
+        full_tool_path = tools_path / tool_path
+        
+        logger.info(f"Tool path: {tool_path}")
+        logger.info(f"Full tool path: {full_tool_path}")
+        logger.info(f"Filename: {filename}")
+        
+        if not full_tool_path.exists():
+            raise HTTPException(status_code=404, detail="Tool directory not found")
+        
+        full_file_path = full_tool_path / filename
+        logger.info(f"Full file path: {full_file_path}")
+        logger.info(f"File exists check: {full_file_path.exists()}")
+        
+        if not full_file_path.exists():
+            # For metadata.json, create a default template if it doesn't exist
+            if filename == 'metadata.json':
+                default_metadata = {
+                    "display_name": "",
+                    "description": "",
+                    "category": "",
+                    "tags": [],
+                    "version": "1.0",
+                    "last_modified": datetime.now().isoformat()
+                }
+                content = json.dumps(default_metadata, ensure_ascii=False, indent=2)
+                return {"success": True, "content": content, "created_default": True}
+            else:
+                return {"success": False, "error": "File not found"}
+        
+        with open(full_file_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        return {"success": True, "content": content}
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error reading file {request.file_path}: {e}")
+        return {"success": False, "error": str(e)}
+
+@app.post("/api/save-file")  
+async def save_file(request: FileSaveRequest, current_user = Depends(get_current_user)):
+    """Save file content"""
+    try:
+        # Check if user is admin
+        if current_user["type"] != 2:  # Only admin can access
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        file_path = request.file_path
+        
+        # Parse the path - expect format like "tool_path/filename.ext"
+        if '/' in file_path:
+            tool_path, filename = file_path.rsplit('/', 1)
+        else:
+            raise HTTPException(status_code=400, detail="Invalid file path format")
+        
+        # Use the same path resolution as gettool endpoint
+        tools_path = get_tools_path()
+        full_tool_path = tools_path / tool_path
+        
+        if not full_tool_path.exists():
+            raise HTTPException(status_code=404, detail="Tool directory not found")
+        
+        full_file_path = full_tool_path / filename
+        
+        # Create backup before saving if file exists
+        if full_file_path.exists():
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = full_tool_path / f"{filename}.backup_{timestamp}"
+            shutil.copy2(full_file_path, backup_path)
+            logger.info(f"Created backup: {backup_path}")
+        
+        # Save the file
+        with open(full_file_path, 'w', encoding='utf-8') as f:
+            f.write(request.content)
+        
+        logger.info(f"File saved by admin user {current_user['uid']}: {full_file_path}")
+        return {"success": True, "message": "File saved successfully"}
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error saving file {request.file_path}: {e}")
+        return {"success": False, "error": str(e)}

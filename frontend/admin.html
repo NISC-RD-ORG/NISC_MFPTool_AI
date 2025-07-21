@@ -443,6 +443,51 @@
         </div>
     </div>
 
+    <!-- Edit Metadata Modal -->
+    <div class="modal fade" id="editMetadataModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-cog"></i> 編輯工具屬性 (metadata.json)
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <div class="d-flex gap-2 align-items-center mb-2">
+                            <button class="btn btn-outline-secondary btn-sm" onclick="formatMetadata()">
+                                <i class="fas fa-indent"></i> 格式化
+                            </button>
+                            <div class="ms-auto">
+                                <small class="text-muted">Ctrl+S 儲存 | Esc 取消</small>
+                            </div>
+                        </div>
+                        <textarea class="form-control" id="editMetadataTextarea" 
+                            placeholder="請輸入 JSON 格式的 metadata..." 
+                            style="font-family: 'Courier New', monospace; font-size: 14px; min-height: 400px;"></textarea>
+                        <div id="metadataValidation" class="mt-2"></div>
+                        <div class="form-text">
+                            <strong>常用欄位說明：</strong><br>
+                            • <code>display_name</code>: 顯示名稱<br>
+                            • <code>description</code>: 工具描述<br>
+                            • <code>category</code>: 分類<br>
+                            • <code>tags</code>: 標籤 (陣列)<br>
+                            • <code>version</code>: 版本<br>
+                            • <code>last_modified</code>: 最後修改時間
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="cancelMetadataEdit()">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="saveMetadata()">
+                        <i class="fas fa-save"></i> 儲存
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -451,12 +496,17 @@
     
     <script>
         let currentUsers = [];
-        let createUserModalInstance, editUserModalInstance, editToolModalInstance;
+        let createUserModalInstance, editUserModalInstance, editToolModalInstance, editMetadataModalInstance;
         
         // Tool editing variables
         let currentEditingToolPath = '';
         let currentEditingToolContent = '';
         let hasUnsavedChanges = false;
+
+        // Metadata editing variables
+        let currentEditingMetadataPath = '';
+        let currentEditingMetadataContent = '';
+        let hasUnsavedMetadataChanges = false;
 
         // Utility function to escape HTML
         function escapeHtml(text) {
@@ -470,6 +520,7 @@
             createUserModalInstance = new bootstrap.Modal(document.getElementById('createUserModal'));
             editUserModalInstance = new bootstrap.Modal(document.getElementById('editUserModal'));
             editToolModalInstance = new bootstrap.Modal(document.getElementById('editToolModal'));
+            editMetadataModalInstance = new bootstrap.Modal(document.getElementById('editMetadataModal'));
             
             // Password validation for create form
             $('#createPassword, #createPasswordConfirm').on('input', function() {
@@ -872,6 +923,9 @@
                                     `<button class="btn btn-sm btn-outline-primary me-1" onclick="editTool('${item.path}')">
                                         <i class="fas fa-edit"></i> 編輯
                                     </button>
+                                    <button class="btn btn-sm btn-outline-info me-1" onclick="editMetadata('${item.path}')">
+                                        <i class="fas fa-cog"></i> 屬性
+                                    </button>
                                     <button class="btn btn-sm btn-outline-danger" onclick="deleteTool('${item.path}')">
                                         <i class="fas fa-trash"></i> 刪除
                                     </button>`
@@ -912,6 +966,148 @@
 
         function navigateToPath(path) {
             loadToolsData(path);
+        }
+
+        // Metadata editing function
+        function editMetadata(toolPath) {
+            currentEditingMetadataPath = toolPath;
+            const metadataPath = toolPath + '/metadata.json';
+            
+            // Fetch current metadata
+            fetch(`${getApiBaseUrl()}/api/get-file`, {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    file_path: metadataPath
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    // Show info if default metadata was created
+                    if (data.created_default) {
+                        alert('metadata.json 不存在，已創建預設模板。請編輯後儲存。');
+                    }
+                    
+                    // Parse and format JSON for better readability
+                    try {
+                        const jsonObject = JSON.parse(data.content);
+                        const formattedJson = JSON.stringify(jsonObject, null, 2);
+                        document.getElementById('editMetadataTextarea').value = formattedJson;
+                        hasUnsavedMetadataChanges = data.created_default || false; // Mark as changed if default was created
+                        updateMetadataUI();
+                    } catch (e) {
+                        // If JSON is invalid, show raw content
+                        document.getElementById('editMetadataTextarea').value = data.content;
+                        document.getElementById('metadataValidation').innerHTML = '<div class="text-danger">⚠️ 無效的JSON格式</div>';
+                    }
+                    editMetadataModalInstance.show();
+                } else {
+                    alert('讀取metadata.json失敗: ' + (data.error || '未知錯誤'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('讀取metadata.json時發生錯誤: ' + error.message);
+            });
+        }
+
+        // Save metadata
+        function saveMetadata() {
+            const content = document.getElementById('editMetadataTextarea').value;
+            
+            // Validate JSON format
+            try {
+                JSON.parse(content);
+            } catch (e) {
+                alert('JSON格式錯誤，無法儲存: ' + e.message);
+                return;
+            }
+            
+            const metadataPath = currentEditingMetadataPath + '/metadata.json';
+            
+            fetch(`${getApiBaseUrl()}/api/save-file`, {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({
+                    file_path: metadataPath,
+                    content: content
+                })
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    hasUnsavedMetadataChanges = false;
+                    updateMetadataUI();
+                    editMetadataModalInstance.hide();
+                    alert('metadata.json已成功儲存');
+                } else {
+                    alert('儲存失敗: ' + (data.error || '未知錯誤'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('儲存時發生錯誤: ' + error.message);
+            });
+        }
+
+        // Update metadata UI
+        function updateMetadataUI() {
+            const content = document.getElementById('editMetadataTextarea').value;
+            const validationDiv = document.getElementById('metadataValidation');
+            const saveButton = document.querySelector('#editMetadataModal .btn-primary');
+            
+            // Validate JSON
+            try {
+                JSON.parse(content);
+                validationDiv.innerHTML = '<div class="text-success">✅ JSON格式正確</div>';
+                saveButton.disabled = false;
+            } catch (e) {
+                validationDiv.innerHTML = '<div class="text-danger">❌ JSON格式錯誤: ' + e.message + '</div>';
+                saveButton.disabled = true;
+            }
+            
+            // Update save button text based on changes
+            if (hasUnsavedMetadataChanges) {
+                saveButton.textContent = '* 儲存';
+            } else {
+                saveButton.textContent = '儲存';
+            }
+        }
+
+        // Cancel metadata editing
+        function cancelMetadataEdit() {
+            if (hasUnsavedMetadataChanges) {
+                if (confirm('有未儲存的變更，確定要取消嗎？')) {
+                    editMetadataModalInstance.hide();
+                }
+            } else {
+                editMetadataModalInstance.hide();
+            }
+        }
+
+        // Format metadata JSON
+        function formatMetadata() {
+            const content = document.getElementById('editMetadataTextarea').value;
+            try {
+                const parsed = JSON.parse(content);
+                const formatted = JSON.stringify(parsed, null, 2);
+                document.getElementById('editMetadataTextarea').value = formatted;
+                hasUnsavedMetadataChanges = true;
+                updateMetadataUI();
+            } catch (e) {
+                alert('無法格式化：JSON格式錯誤 - ' + e.message);
+            }
         }
 
         function searchTools() {
@@ -990,6 +1186,9 @@
                                 <div class="mt-3">
                                     <button class="btn btn-sm btn-outline-primary me-1" onclick="editTool('${result.path}')">
                                         <i class="fas fa-edit"></i> 編輯
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-info me-1" onclick="editMetadata('${result.path}')">
+                                        <i class="fas fa-cog"></i> 屬性
                                     </button>
                                     <button class="btn btn-sm btn-outline-danger" onclick="deleteTool('${result.path}')">
                                         <i class="fas fa-trash"></i> 刪除
@@ -1375,6 +1574,53 @@
                 }
             }
         }
+
+        // Add event listeners when document is ready
+        $(document).ready(function() {
+            // Metadata editor change tracking
+            if (document.getElementById('editMetadataTextarea')) {
+                document.getElementById('editMetadataTextarea').addEventListener('input', function() {
+                    hasUnsavedMetadataChanges = true;
+                    updateMetadataUI();
+                });
+
+                // Keyboard shortcuts for metadata editor
+                document.getElementById('editMetadataTextarea').addEventListener('keydown', function(e) {
+                    if (e.ctrlKey && e.key === 's') {
+                        e.preventDefault();
+                        saveMetadata();
+                    }
+                    if (e.key === 'Escape') {
+                        if (hasUnsavedMetadataChanges) {
+                            if (confirm('有未儲存的變更，確定要離開嗎？')) {
+                                editMetadataModalInstance.hide();
+                            }
+                        } else {
+                            editMetadataModalInstance.hide();
+                        }
+                    }
+                });
+            }
+
+            // Prevent accidental page close when editing metadata
+            window.addEventListener('beforeunload', function (e) {
+                if (hasUnsavedMetadataChanges) {
+                    e.preventDefault();
+                    e.returnValue = '';
+                }
+            });
+
+            // Handle metadata modal close
+            if (editMetadataModalInstance) {
+                document.getElementById('editMetadataModal').addEventListener('hide.bs.modal', function (e) {
+                    if (hasUnsavedMetadataChanges) {
+                        if (!confirm('有未儲存的變更，確定要關閉嗎？')) {
+                            e.preventDefault();
+                        }
+                    }
+                });
+            }
+        });
     </script>
 </body>
 </html>
