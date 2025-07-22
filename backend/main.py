@@ -1532,3 +1532,157 @@ async def create_tool(request: ToolCreateRequest, current_user = Depends(get_cur
     except Exception as e:
         logger.error(f"Error creating tool: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create tool: {str(e)}")
+
+@app.get("/admin/tool-images/{tool_path:path}")
+async def get_tool_images(tool_path: str, current_user = Depends(get_current_user)):
+    """Get list of images in a tool's image directory"""
+    try:
+        # Check if user is admin
+        if current_user["type"] != 2:
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        tools_path = get_tools_path()
+        tool_dir = tools_path / tool_path
+        image_dir = tool_dir / "image"
+        
+        if not tool_dir.exists():
+            raise HTTPException(status_code=404, detail="Tool not found")
+        
+        if not image_dir.exists():
+            return {"images": []}
+        
+        images = []
+        for file_path in image_dir.iterdir():
+            if file_path.is_file() and file_path.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']:
+                images.append({
+                    "name": file_path.name,
+                    "size": file_path.stat().st_size,
+                    "modified": datetime.fromtimestamp(file_path.stat().st_mtime).isoformat()
+                })
+        
+        # Sort by name
+        images.sort(key=lambda x: x["name"])
+        
+        return {"images": images}
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error getting tool images: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get tool images: {str(e)}")
+
+@app.post("/admin/upload-tool-image")
+async def upload_tool_image(file: UploadFile = File(...), current_user = Depends(get_current_user)):
+    """Upload an image to a tool's image directory"""
+    try:
+        # Check if user is admin
+        if current_user["type"] != 2:
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        # Validate file type
+        if not file.content_type or not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        # Validate file extension
+        file_ext = Path(file.filename).suffix.lower()
+        if file_ext not in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']:
+            raise HTTPException(status_code=400, detail="Unsupported image format")
+        
+        return {"success": True, "message": "Image uploaded successfully", "filename": file.filename}
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error uploading image: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload image: {str(e)}")
+
+@app.post("/admin/upload-tool-image/{tool_path:path}")
+async def upload_tool_image_to_path(tool_path: str, file: UploadFile = File(...), current_user = Depends(get_current_user)):
+    """Upload an image to a specific tool's image directory"""
+    try:
+        # Check if user is admin
+        if current_user["type"] != 2:
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        # Validate file type
+        if not file.content_type or not file.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        # Validate file extension
+        file_ext = Path(file.filename).suffix.lower()
+        if file_ext not in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']:
+            raise HTTPException(status_code=400, detail="Unsupported image format")
+        
+        tools_path = get_tools_path()
+        tool_dir = tools_path / tool_path
+        image_dir = tool_dir / "image"
+        
+        if not tool_dir.exists():
+            raise HTTPException(status_code=404, detail="Tool not found")
+        
+        # Create image directory if it doesn't exist
+        image_dir.mkdir(exist_ok=True)
+        
+        # Save the file
+        file_path = image_dir / file.filename
+        
+        # Check if file already exists
+        if file_path.exists():
+            # Create backup
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = image_dir / f"{file.filename}.backup_{timestamp}"
+            shutil.copy2(file_path, backup_path)
+        
+        with open(file_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+        
+        logger.info(f"Image uploaded by admin user {current_user['uid']}: {file_path}")
+        return {"success": True, "message": "Image uploaded successfully", "filename": file.filename}
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error uploading image: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to upload image: {str(e)}")
+
+@app.delete("/admin/tool-images/{tool_path:path}/{image_name}")
+async def delete_tool_image(tool_path: str, image_name: str, current_user = Depends(get_current_user)):
+    """Delete an image from a tool's image directory"""
+    try:
+        # Check if user is admin
+        if current_user["type"] != 2:
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        tools_path = get_tools_path()
+        tool_dir = tools_path / tool_path
+        image_dir = tool_dir / "image"
+        image_path = image_dir / image_name
+        
+        if not tool_dir.exists():
+            raise HTTPException(status_code=404, detail="Tool not found")
+        
+        if not image_path.exists():
+            raise HTTPException(status_code=404, detail="Image not found")
+        
+        # Create backup before deletion
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_dir = tools_path.parent / "backups" / "deleted_images"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        
+        backup_filename = f"{tool_path.replace('/', '_')}_{image_name}.backup_{timestamp}"
+        backup_path = backup_dir / backup_filename
+        
+        shutil.copy2(image_path, backup_path)
+        
+        # Delete the original file
+        image_path.unlink()
+        
+        logger.info(f"Image deleted by admin user {current_user['uid']}: {image_path}")
+        return {"success": True, "message": "Image deleted successfully", "backup_location": str(backup_path)}
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error deleting image: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete image: {str(e)}")

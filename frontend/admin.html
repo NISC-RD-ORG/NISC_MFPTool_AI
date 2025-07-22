@@ -164,6 +164,47 @@
         .edit-sync-scroll {
             overflow: hidden;
         }
+        /* Image Management Styles */
+        .image-item {
+            position: relative;
+            display: inline-block;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+        }
+        .image-item img {
+            width: 120px;
+            height: 80px;
+            object-fit: cover;
+            display: block;
+        }
+        .image-item .image-actions {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .image-item:hover .image-actions {
+            opacity: 1;
+        }
+        .image-item .image-name {
+            padding: 5px;
+            font-size: 11px;
+            text-align: center;
+            background: #f8f9fa;
+            border-top: 1px solid #ddd;
+            word-break: break-all;
+        }
+        .image-upload-progress {
+            display: none;
+            margin-top: 10px;
+        }
+        .image-upload-progress .progress {
+            height: 5px;
+        }
     </style>
 </head>
 <body>
@@ -420,7 +461,7 @@
                 <div class="modal-body p-0">
                     <div class="row h-100 g-0">
                         <!-- Edit Panel -->
-                        <div class="col-md-6 border-end d-flex flex-column">
+                        <div class="col-md-4 border-end d-flex flex-column">
                             <div class="p-3 border-bottom">
                                 <div class="d-flex gap-2 align-items-center">
                                     <button class="btn btn-success btn-sm" id="saveToolBtn" onclick="saveToolContent()">
@@ -430,9 +471,6 @@
                                         <i class="fas fa-times"></i> 取消
                                     </button>
                                     <div class="ms-auto d-flex align-items-center gap-3">
-                                        <small class="text-muted">
-                                            快捷鍵: Ctrl+S 儲存 | Esc 取消 | Tab 縮排
-                                        </small>
                                         <small class="text-muted">
                                             <span id="charCount">0</span> 字符 | 
                                             <span id="lineCount">1</span> 行
@@ -448,13 +486,53 @@
                             </div>
                         </div>
                         <!-- Preview Panel -->
-                        <div class="col-md-6 d-flex flex-column">
+                        <div class="col-md-4 border-end d-flex flex-column">
                             <div class="p-3 border-bottom">
                                 <h6 class="mb-0"><i class="fas fa-eye"></i> 即時預覽</h6>
                             </div>
                             <div class="flex-grow-1 overflow-auto position-relative" id="editToolPreviewContainer">
                                 <div id="editToolPreview" class="p-3" style="min-height: 100%;">
                                     預覽內容將在此顯示...
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Image Management Panel -->
+                        <div class="col-md-4 d-flex flex-column">
+                            <div class="p-3 border-bottom">
+                                <h6 class="mb-0"><i class="fas fa-images"></i> 圖片管理</h6>
+                            </div>
+                            <div class="flex-grow-1 overflow-auto">
+                                <!-- Image Upload Area -->
+                                <div class="p-3 border-bottom">
+                                    <div class="mb-3">
+                                        <label for="imageUpload" class="form-label">上傳圖片</label>
+                                        <input type="file" class="form-control" id="imageUpload" multiple accept="image/*">
+                                        <div class="form-text">支援 JPG, PNG, GIF 格式，可選擇多個檔案</div>
+                                    </div>
+                                    <button class="btn btn-primary btn-sm w-100" onclick="uploadImages()">
+                                        <i class="fas fa-upload"></i> 上傳圖片
+                                    </button>
+                                    <!-- Upload Progress -->
+                                    <div class="image-upload-progress mt-3">
+                                        <div class="d-flex justify-content-between mb-1">
+                                            <small class="text-muted">上傳進度</small>
+                                            <small class="text-muted">0%</small>
+                                        </div>
+                                        <div class="progress">
+                                            <div class="progress-bar bg-primary" role="progressbar" style="width: 0%"></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Existing Images -->
+                                <div class="p-3">
+                                    <h6>現有圖片</h6>
+                                    <div id="existingImages" class="mt-2">
+                                        <div class="text-muted text-center py-3">
+                                            <i class="fas fa-image fa-2x mb-2"></i>
+                                            <p>載入中...</p>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1510,6 +1588,202 @@
             });
         }
 
+        // ========== 圖片管理功能 ==========
+        function loadExistingImages() {
+            if (!currentEditingToolPath) return;
+            
+            const container = $('#existingImages');
+            container.html(`
+                <div class="text-muted text-center py-3">
+                    <i class="fas fa-spinner fa-spin fa-2x mb-2"></i>
+                    <p>載入圖片中...</p>
+                </div>
+            `);
+            
+            fetch(`${getApiBaseUrl()}/admin/tool-images/${encodeURIComponent(currentEditingToolPath)}`, {
+                headers: getAuthHeaders()
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to load images');
+                }
+                return response.json();
+            })
+            .then(data => {
+                displayExistingImages(data.images || []);
+            })
+            .catch(error => {
+                console.error('Error loading images:', error);
+                container.html(`
+                    <div class="text-muted text-center py-3">
+                        <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+                        <p>載入圖片失敗</p>
+                    </div>
+                `);
+            });
+        }
+
+        function displayExistingImages(images) {
+            const container = $('#existingImages');
+            
+            if (images.length === 0) {
+                container.html(`
+                    <div class="text-muted text-center py-3">
+                        <i class="fas fa-image fa-2x mb-2"></i>
+                        <p>暫無圖片</p>
+                    </div>
+                `);
+                return;
+            }
+            
+            let html = '';
+            images.forEach(image => {
+                const imageUrl = `${getApiBaseUrl()}/gettoolimage/${encodeURIComponent(currentEditingToolPath)}/${encodeURIComponent(image.name)}`;
+                html += `
+                    <div class="image-item">
+                        <img src="${imageUrl}" alt="${image.name}" onclick="insertImageToEditor('${image.name}')">
+                        <div class="image-actions">
+                            <button class="btn btn-sm btn-danger" onclick="deleteImage('${image.name}')" title="刪除圖片">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                        <div class="image-name">${image.name}</div>
+                    </div>
+                `;
+            });
+            
+            container.html(html);
+        }
+
+        function uploadImages() {
+            const fileInput = document.getElementById('imageUpload');
+            const files = fileInput.files;
+            
+            if (files.length === 0) {
+                alert('請選擇要上傳的圖片');
+                return;
+            }
+            
+            if (!currentEditingToolPath) {
+                alert('沒有選擇要編輯的工具');
+                return;
+            }
+            
+            // Show progress
+            const progressContainer = $('.image-upload-progress');
+            progressContainer.show();
+            const progressBar = progressContainer.find('.progress-bar');
+            progressBar.css('width', '0%');
+            
+            // Upload files one by one
+            uploadNextFile(0, files, progressBar, () => {
+                // All files uploaded, reload images
+                loadExistingImages();
+                fileInput.value = ''; // Clear file input
+                progressContainer.hide();
+            });
+        }
+
+        function uploadNextFile(index, files, progressBar, onComplete) {
+            if (index >= files.length) {
+                onComplete();
+                return;
+            }
+            
+            const file = files[index];
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            // Get token and prepare headers
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                alert('認證token不存在，請重新登入');
+                logout();
+                return;
+            }
+            
+            fetch(`${getApiBaseUrl()}/admin/upload-tool-image/${encodeURIComponent(currentEditingToolPath)}`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                    // 注意：不要設置 Content-Type，讓瀏覽器自動設置 multipart/form-data
+                },
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => {
+                        throw new Error(err.detail || 'Upload failed');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                // Update progress
+                const progress = ((index + 1) / files.length) * 100;
+                progressBar.css('width', progress + '%');
+                progressBar.parent().prev().find('small:last-child').text(Math.round(progress) + '%');
+                
+                // Upload next file
+                uploadNextFile(index + 1, files, progressBar, onComplete);
+            })
+            .catch(error => {
+                console.error('Error uploading file:', error);
+                alert(`上傳 ${file.name} 失敗: ${error.message}`);
+                
+                // Continue with next file
+                uploadNextFile(index + 1, files, progressBar, onComplete);
+            });
+        }
+
+        function deleteImage(imageName) {
+            if (!confirm(`確定要刪除圖片 "${imageName}" 嗎？`)) {
+                return;
+            }
+            
+            fetch(`${getApiBaseUrl()}/admin/tool-images/${encodeURIComponent(currentEditingToolPath)}/${encodeURIComponent(imageName)}`, {
+                method: 'DELETE',
+                headers: getAuthHeaders()
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => {
+                        throw new Error(err.detail || 'Delete failed');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                alert('圖片刪除成功！');
+                loadExistingImages();
+            })
+            .catch(error => {
+                console.error('Error deleting image:', error);
+                alert(`刪除圖片失敗: ${error.message}`);
+            });
+        }
+
+        function insertImageToEditor(imageName) {
+            const textarea = $('#editToolTextarea')[0];
+            const markdownTag = `![圖片說明](./image/${imageName})`;
+            
+            // Insert at cursor position
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const currentValue = textarea.value;
+            
+            textarea.value = currentValue.substring(0, start) + markdownTag + currentValue.substring(end);
+            
+            // Set cursor position after the inserted text
+            textarea.selectionStart = textarea.selectionEnd = start + markdownTag.length;
+            
+            // Focus back to textarea
+            textarea.focus();
+            
+            // Trigger input event to update preview
+            $(textarea).trigger('input');
+        }
+
         function editTool(toolPath) {
             // Load tool content for editing
             currentEditingToolPath = toolPath;
@@ -1590,8 +1864,11 @@
                 // Setup scroll synchronization
                 setupScrollSync();
                 
-                // Show modal
+                // Show modal and load images
                 editToolModalInstance.show();
+                
+                // Load existing images
+                loadExistingImages();
             })
             .catch(error => {
                 console.error('Error loading tool for editing:', error);
