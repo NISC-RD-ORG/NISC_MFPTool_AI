@@ -256,6 +256,19 @@
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h3><i class="fas fa-tools"></i> 工具管理</h3>
                     <div>
+                        <div class="btn-group me-2" role="group">
+                            <button type="button" class="btn btn-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                <i class="fas fa-plus"></i> 新增
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="#" onclick="showCreateCategoryModal()">
+                                    <i class="fas fa-folder-plus"></i> 新增分類
+                                </a></li>
+                                <li><a class="dropdown-item" href="#" onclick="showCreateToolModal()">
+                                    <i class="fas fa-file-plus"></i> 新增工具
+                                </a></li>
+                            </ul>
+                        </div>
                         <button class="btn btn-info me-2" onclick="refreshToolsList()">
                             <i class="fas fa-sync-alt"></i> 重新整理
                         </button>
@@ -496,6 +509,106 @@
         </div>
     </div>
 
+    <!-- Create Category Modal -->
+    <div class="modal fade" id="createCategoryModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-folder-plus"></i> 新增分類
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="createCategoryForm">
+                        <div class="mb-3">
+                            <label for="categoryPath" class="form-label">當前位置</label>
+                            <input type="text" class="form-control" id="categoryPath" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label for="categoryName" class="form-label">分類名稱</label>
+                            <input type="text" class="form-control" id="categoryName" placeholder="請輸入分類名稱" required>
+                            <div class="form-text">分類名稱將作為資料夾名稱，建議使用英文或數字</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="categoryDisplayName" class="form-label">顯示名稱</label>
+                            <input type="text" class="form-control" id="categoryDisplayName" placeholder="請輸入顯示名稱">
+                            <div class="form-text">顯示名稱可以使用中文，將顯示在介面上</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="categoryDescription" class="form-label">描述 (選填)</label>
+                            <textarea class="form-control" id="categoryDescription" rows="3" placeholder="請輸入分類描述"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="createCategory()">
+                        <i class="fas fa-save"></i> 創建
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Tool Modal -->
+    <div class="modal fade" id="createToolModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-file-plus"></i> 新增工具
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="createToolForm">
+                        <div class="mb-3">
+                            <label for="toolPath" class="form-label">當前位置</label>
+                            <input type="text" class="form-control" id="toolPath" readonly>
+                        </div>
+                        <div class="mb-3">
+                            <label for="toolName" class="form-label">工具名稱</label>
+                            <input type="text" class="form-control" id="toolName" placeholder="請輸入工具名稱" required>
+                            <div class="form-text">工具名稱將作為資料夾名稱，建議使用英文或數字</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="toolDisplayName" class="form-label">顯示名稱</label>
+                            <input type="text" class="form-control" id="toolDisplayName" placeholder="請輸入顯示名稱" required>
+                            <div class="form-text">顯示名稱可以使用中文，將顯示在介面上</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="toolDescription" class="form-label">工具描述</label>
+                            <textarea class="form-control" id="toolDescription" rows="3" placeholder="請輸入工具描述" required></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="toolCategory" class="form-label">分類</label>
+                            <input type="text" class="form-control" id="toolCategory" placeholder="請輸入分類標籤">
+                            <div class="form-text">例如：維修、保養、故障排除等</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="toolTags" class="form-label">標籤 (選填)</label>
+                            <input type="text" class="form-control" id="toolTags" placeholder="請輸入標籤，用逗號分隔">
+                            <div class="form-text">例如：步驟,操作手冊,檢修</div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="toolContent" class="form-label">內容</label>
+                            <textarea class="form-control" id="toolContent" rows="10" 
+                                placeholder="請輸入工具內容 (支援 Markdown 格式)&#10;&#10;例如：&#10;# 工具標題&#10;&#10;## 步驟1&#10;1. 執行...&#10;2. 檢查...&#10;&#10;## 步驟2&#10;![圖片說明](./image/example.png)"
+                                style="font-family: 'Courier New', monospace;"></textarea>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="createTool()">
+                        <i class="fas fa-save"></i> 創建
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -504,7 +617,7 @@
     
     <script>
         let currentUsers = [];
-        let createUserModalInstance, editUserModalInstance, editToolModalInstance, editMetadataModalInstance;
+        let createUserModalInstance, editUserModalInstance, editToolModalInstance, editMetadataModalInstance, createCategoryModalInstance, createToolModalInstance;
         
         // Tool editing variables
         let currentEditingToolPath = '';
@@ -529,6 +642,8 @@
             editUserModalInstance = new bootstrap.Modal(document.getElementById('editUserModal'));
             editToolModalInstance = new bootstrap.Modal(document.getElementById('editToolModal'));
             editMetadataModalInstance = new bootstrap.Modal(document.getElementById('editMetadataModal'));
+            createCategoryModalInstance = new bootstrap.Modal(document.getElementById('createCategoryModal'));
+            createToolModalInstance = new bootstrap.Modal(document.getElementById('createToolModal'));
             
             // Password validation for create form
             $('#createPassword, #createPasswordConfirm').on('input', function() {
@@ -839,6 +954,110 @@
                     }
                 }
             }
+        }
+
+        // ========== 新增功能 ==========
+        function showCreateCategoryModal() {
+            $('#createCategoryForm')[0].reset();
+            $('#categoryPath').val(currentToolsPath || '根目錄');
+            createCategoryModalInstance.show();
+        }
+
+        function showCreateToolModal() {
+            $('#createToolForm')[0].reset();
+            $('#toolPath').val(currentToolsPath || '根目錄');
+            createToolModalInstance.show();
+        }
+
+        function createCategory() {
+            const name = $('#categoryName').val().trim();
+            const displayName = $('#categoryDisplayName').val().trim();
+            const description = $('#categoryDescription').val().trim();
+            
+            if (!name) {
+                alert('請輸入分類名稱');
+                return;
+            }
+            
+            const categoryData = {
+                name: name,
+                display_name: displayName || name,
+                description: description,
+                parent_path: currentToolsPath
+            };
+            
+            fetch(`${getApiBaseUrl()}/admin/categories`, {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify(categoryData)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => {
+                        throw new Error(err.detail || 'Create category failed');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                alert('分類創建成功！');
+                createCategoryModalInstance.hide();
+                refreshToolsList();
+            })
+            .catch(error => {
+                console.error('Error creating category:', error);
+                alert(`創建分類失敗: ${error.message}`);
+            });
+        }
+
+        function createTool() {
+            const name = $('#toolName').val().trim();
+            const displayName = $('#toolDisplayName').val().trim();
+            const description = $('#toolDescription').val().trim();
+            const category = $('#toolCategory').val().trim();
+            const tagsText = $('#toolTags').val().trim();
+            const content = $('#toolContent').val().trim();
+            
+            if (!name || !displayName || !description || !content) {
+                alert('請填寫所有必填欄位');
+                return;
+            }
+            
+            // Parse tags
+            const tags = tagsText ? tagsText.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
+            
+            const toolData = {
+                name: name,
+                display_name: displayName,
+                description: description,
+                category: category,
+                tags: tags,
+                content: content,
+                parent_path: currentToolsPath
+            };
+            
+            fetch(`${getApiBaseUrl()}/admin/tools`, {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify(toolData)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(err => {
+                        throw new Error(err.detail || 'Create tool failed');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                alert('工具創建成功！');
+                createToolModalInstance.hide();
+                refreshToolsList();
+            })
+            .catch(error => {
+                console.error('Error creating tool:', error);
+                alert(`創建工具失敗: ${error.message}`);
+            });
         }
 
         // ========== 工具管理功能 ==========

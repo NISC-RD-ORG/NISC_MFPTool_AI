@@ -95,6 +95,21 @@ class FileSaveRequest(BaseModel):
     file_path: str
     content: str
 
+class CategoryCreateRequest(BaseModel):
+    name: str
+    display_name: str
+    description: str = ""
+    parent_path: str = ""
+
+class ToolCreateRequest(BaseModel):
+    name: str
+    display_name: str
+    description: str
+    category: str = ""
+    tags: list[str] = []
+    content: str
+    parent_path: str = ""
+
 def get_db_connection():
     """Get database connection"""
     conn = sqlite3.connect(DB_PATH)
@@ -1403,3 +1418,117 @@ async def save_file(request: FileSaveRequest, current_user = Depends(get_current
     except Exception as e:
         logger.error(f"Error saving file {request.file_path}: {e}")
         return {"success": False, "error": str(e)}
+
+@app.post("/admin/categories")
+async def create_category(request: CategoryCreateRequest, current_user = Depends(get_current_user)):
+    """Create a new category"""
+    try:
+        # Check if user is admin
+        if current_user["type"] != 2:
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        tools_path = get_tools_path()
+        
+        # Build the full path
+        if request.parent_path:
+            parent_path = tools_path / request.parent_path
+        else:
+            parent_path = tools_path
+        
+        if not parent_path.exists():
+            raise HTTPException(status_code=404, detail="Parent path not found")
+        
+        # Create the new category directory
+        new_category_path = parent_path / request.name
+        
+        if new_category_path.exists():
+            raise HTTPException(status_code=400, detail="Category already exists")
+        
+        new_category_path.mkdir(parents=True, exist_ok=False)
+        
+        # Create a metadata.json file for the category
+        metadata = {
+            "type": "category",
+            "name": request.name,
+            "display_name": request.display_name,
+            "description": request.description,
+            "created_at": datetime.now().isoformat(),
+            "created_by": current_user["uid"]
+        }
+        
+        metadata_path = new_category_path / "metadata.json"
+        with open(metadata_path, 'w', encoding='utf-8') as f:
+            json.dump(metadata, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"Category created by admin user {current_user['uid']}: {new_category_path}")
+        return {"success": True, "message": "Category created successfully", "path": str(new_category_path.relative_to(tools_path))}
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error creating category: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create category: {str(e)}")
+
+@app.post("/admin/tools")
+async def create_tool(request: ToolCreateRequest, current_user = Depends(get_current_user)):
+    """Create a new tool"""
+    try:
+        # Check if user is admin
+        if current_user["type"] != 2:
+            raise HTTPException(status_code=403, detail="Admin access required")
+        
+        tools_path = get_tools_path()
+        
+        # Build the full path
+        if request.parent_path:
+            parent_path = tools_path / request.parent_path
+        else:
+            parent_path = tools_path
+        
+        if not parent_path.exists():
+            raise HTTPException(status_code=404, detail="Parent path not found")
+        
+        # Create the new tool directory
+        new_tool_path = parent_path / request.name
+        
+        if new_tool_path.exists():
+            raise HTTPException(status_code=400, detail="Tool already exists")
+        
+        new_tool_path.mkdir(parents=True, exist_ok=False)
+        
+        # Create the image directory
+        image_path = new_tool_path / "image"
+        image_path.mkdir(exist_ok=True)
+        
+        # Create content.md file
+        content_path = new_tool_path / "content.md"
+        with open(content_path, 'w', encoding='utf-8') as f:
+            f.write(request.content)
+        
+        # Create metadata.json file
+        metadata = {
+            "type": "tool",
+            "name": request.name,
+            "display_name": request.display_name,
+            "description": request.description,
+            "category": request.category,
+            "tags": request.tags,
+            "version": "1.0.0",
+            "created_at": datetime.now().isoformat(),
+            "created_by": current_user["uid"],
+            "last_modified": datetime.now().isoformat(),
+            "last_modified_by": current_user["uid"]
+        }
+        
+        metadata_path = new_tool_path / "metadata.json"
+        with open(metadata_path, 'w', encoding='utf-8') as f:
+            json.dump(metadata, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"Tool created by admin user {current_user['uid']}: {new_tool_path}")
+        return {"success": True, "message": "Tool created successfully", "path": str(new_tool_path.relative_to(tools_path))}
+        
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error creating tool: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to create tool: {str(e)}")
