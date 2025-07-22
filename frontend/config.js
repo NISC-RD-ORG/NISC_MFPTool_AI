@@ -7,7 +7,7 @@ window.MFP_CONFIG = {
     // API配置 - 開發環境使用 localhost，生產環境使用正式域名
     API: {
         // 開發環境 (本機測試) - 直接指向後端根路徑
-        development: 'http://127.0.0.1:8001',
+        development: 'http://127.0.0.1:8000',
         // 生產環境 - 包含完整路徑
         production: 'https://ai.nisc.com.tw/mfp_tool/api'
     },
