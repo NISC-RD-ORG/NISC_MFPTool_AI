@@ -493,7 +493,7 @@ async def list_models(current_user = Depends(get_current_user)):
         
         models = []
         for item in tools_path.iterdir():
-            if item.is_dir():
+            if item.is_dir() and item.name != "deleted_backups":
                 models.append({
                     "name": item.name,
                     "display_name": item.name
@@ -640,6 +640,10 @@ async def browse_dynamic_structure(path: str = "", current_user = Depends(get_cu
             if not item.is_dir():
                 continue
             
+            # Skip deleted_backups directory
+            if item.name == "deleted_backups":
+                continue
+            
             # Check if this directory contains content.md (making it a tool)
             content_file = item / "content.md"
             
@@ -708,6 +712,10 @@ def count_tools_recursive(directory_path: Path) -> int:
             if not item.is_dir():
                 continue
             
+            # Skip deleted_backups directory
+            if item.name == "deleted_backups":
+                continue
+            
             content_file = item / "content.md"
             if content_file.exists():
                 count += 1
@@ -737,6 +745,10 @@ async def search_tools(q: str, current_user = Depends(get_current_user)):
             try:
                 for item in current_dir.iterdir():
                     if not item.is_dir():
+                        continue
+                    
+                    # Skip deleted_backups directory
+                    if item.name == "deleted_backups":
                         continue
                     
                     item_relative_path = f"{relative_path}/{item.name}" if relative_path else item.name
@@ -1151,7 +1163,7 @@ async def delete_empty_category(category_path: str, current_user = Depends(get_c
         # Check if category is empty (no tools or subcategories)
         has_content = False
         for item in full_category_path.iterdir():
-            if item.is_dir():
+            if item.is_dir() and item.name != "deleted_backups":
                 # Check if this is a tool (has content.md) or has any content
                 content_file = item / "content.md"
                 if content_file.exists():
