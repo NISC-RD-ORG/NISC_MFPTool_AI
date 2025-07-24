@@ -10,6 +10,7 @@ import logging
 import os
 import json
 import sqlite3
+import re
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 import bcrypt
@@ -23,6 +24,11 @@ async def lifespan(app: FastAPI):
     logger.info("Starting application...")
     # recreate_admin_user()  # Fix admin user password
     debug_database_users()  # Debug database state
+    
+    # Sync alltools.json on startup
+    logger.info("Synchronizing alltools.json on startup...")
+    sync_alltools_json()
+    
     yield
     # Shutdown
     logger.info("Shutting down application...")
@@ -282,6 +288,116 @@ def get_tools_path():
     # Fallback to local tools directory
     local_tools_path = Path(__file__).parent.parent / "tools"
     return local_tools_path
+
+def sync_alltools_json():
+    """Synchronize alltools.json with current tools data"""
+    try:
+        tools_path = get_tools_path()
+        if not tools_path.exists():
+            logger.warning("Tools directory not found, skipping alltools.json sync")
+            return False
+        
+        exported_tools = []
+        
+        def export_tools_recursive(current_dir: Path, relative_path: str = ""):
+            """Recursively export tools from directory structure"""
+            try:
+                for item in current_dir.iterdir():
+                    if not item.is_dir():
+                        continue
+                    
+                    # Skip deleted_backups directory
+                    if item.name == "deleted_backups":
+                        continue
+                    
+                    item_relative_path = f"{relative_path}/{item.name}" if relative_path else item.name
+                    content_file = item / "content.md"
+                    
+                    if content_file.exists():
+                        # This is a tool, export its data
+                        tool_data = {
+                            "name": item.name,
+                            "path": item_relative_path,
+                            "metadata": {},
+                            "content": ""
+                        }
+                        
+                        # Read metadata.json if exists
+                        metadata_file = item / "metadata.json"
+                        if metadata_file.exists():
+                            try:
+                                with open(metadata_file, 'r', encoding='utf-8') as f:
+                                    tool_data["metadata"] = json.load(f)
+                            except Exception as e:
+                                logger.warning(f"Error reading metadata for {item_relative_path}: {e}")
+                                tool_data["metadata"] = {"error": f"Failed to read metadata: {str(e)}"}
+                        
+                        # Read content.md and convert image paths
+                        try:
+                            with open(content_file, 'r', encoding='utf-8') as f:
+                                content = f.read()
+                            
+                            # Convert relative image paths to absolute paths
+                            def replace_image_path(match):
+                                # Extract the alt text and image path from markdown syntax
+                                alt_text = match.group(1)
+                                image_path = match.group(2)
+                                
+                                # Handle relative paths starting with ./image/
+                                if image_path.startswith('./image/'):
+                                    # Remove the ./ prefix and construct absolute path
+                                    relative_image_path = image_path[2:]  # Remove './'
+                                    absolute_image_path = str(item / relative_image_path)
+                                    return f'![{alt_text}]({absolute_image_path})'
+                                elif image_path.startswith('image/'):
+                                    # Handle paths starting with image/
+                                    absolute_image_path = str(item / image_path)
+                                    return f'![{alt_text}]({absolute_image_path})'
+                                else:
+                                    # Return original if not a relative image path
+                                    return match.group(0)
+                            
+                            # Pattern to match markdown image syntax: ![alt text](path)
+                            pattern = r'!\[([^\]]*)\]\(([^)]+)\)'
+                            content = re.sub(pattern, replace_image_path, content)
+                            
+                            tool_data["content"] = content
+                            
+                        except Exception as e:
+                            logger.warning(f"Error reading content for {item_relative_path}: {e}")
+                            tool_data["content"] = f"Error reading content: {str(e)}"
+                        
+                        exported_tools.append(tool_data)
+                    
+                    else:
+                        # This is a category, continue searching recursively
+                        export_tools_recursive(item, item_relative_path)
+                        
+            except Exception as e:
+                logger.warning(f"Error exporting from directory {current_dir}: {e}")
+        
+        # Start exporting from tools root
+        export_tools_recursive(tools_path)
+        
+        # Sort tools by path for consistent output
+        exported_tools.sort(key=lambda x: x["path"])
+        
+        # Write to alltools.json file
+        output_file = tools_path / "alltools.json"
+        try:
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(exported_tools, f, ensure_ascii=False, indent=2)
+            
+            logger.info(f"Successfully synchronized alltools.json with {len(exported_tools)} tools")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error writing alltools.json: {e}")
+            return False
+        
+    except Exception as e:
+        logger.error(f"Error synchronizing alltools.json: {e}")
+        return False
 
 @app.get("/listtools")
 async def list_tools(current_user = Depends(get_current_user)):
@@ -873,6 +989,9 @@ async def edit_tool(tool_path: str, edit_request: ToolEditRequest, current_user 
         with content_file.open("w", encoding="utf-8") as f:
             f.write(edit_request.content)
         
+        # Sync alltools.json after editing
+        sync_alltools_json()
+        
         logger.info(f"Tool {tool_path} edited by admin {current_user['account']}")
         return {
             "message": "Tool content updated successfully",
@@ -1132,6 +1251,9 @@ async def delete_tool(tool_path: str, current_user = Depends(get_current_user)):
         # Delete the tool directory
         shutil.rmtree(full_tool_path)
         
+        # Sync alltools.json after deletion
+        sync_alltools_json()
+        
         logger.info(f"Admin {current_user['account']} deleted tool: {tool_path}")
         return {
             "message": "Tool deleted successfully",
@@ -1215,6 +1337,10 @@ def has_tools_recursive(directory_path: Path) -> bool:
     try:
         for item in directory_path.iterdir():
             if not item.is_dir():
+                continue
+            
+            # Skip deleted_backups directory
+            if item.name == "deleted_backups":
                 continue
             
             content_file = item / "content.md"
@@ -1422,6 +1548,10 @@ async def save_file(request: FileSaveRequest, current_user = Depends(get_current
         with open(full_file_path, 'w', encoding='utf-8') as f:
             f.write(request.content)
         
+        # Sync alltools.json if this is a tool-related file
+        if filename in ['content.md', 'metadata.json']:
+            sync_alltools_json()
+        
         logger.info(f"File saved by admin user {current_user['uid']}: {full_file_path}")
         return {"success": True, "message": "File saved successfully"}
         
@@ -1535,6 +1665,9 @@ async def create_tool(request: ToolCreateRequest, current_user = Depends(get_cur
         metadata_path = new_tool_path / "metadata.json"
         with open(metadata_path, 'w', encoding='utf-8') as f:
             json.dump(metadata, f, ensure_ascii=False, indent=2)
+        
+        # Sync alltools.json after creation
+        sync_alltools_json()
         
         logger.info(f"Tool created by admin user {current_user['uid']}: {new_tool_path}")
         return {"success": True, "message": "Tool created successfully", "path": str(new_tool_path.relative_to(tools_path))}
@@ -1698,3 +1831,41 @@ async def delete_tool_image(tool_path: str, image_name: str, current_user = Depe
     except Exception as e:
         logger.error(f"Error deleting image: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to delete image: {str(e)}")
+
+@app.get("/admin/export-all-tools")
+async def export_all_tools(current_user = Depends(get_current_user)):
+    """Export all tools data to JSON format (Admin only) - Manual trigger"""
+    try:
+        check_admin_permission(current_user)
+        
+        success = sync_alltools_json()
+        if success:
+            tools_path = get_tools_path()
+            output_file = tools_path / "alltools.json"
+            
+            # Read the file to get count and preview
+            try:
+                with open(output_file, 'r', encoding='utf-8') as f:
+                    exported_tools = json.load(f)
+                
+                return {
+                    "success": True,
+                    "message": f"Successfully exported {len(exported_tools)} tools",
+                    "output_file": str(output_file),
+                    "tools_count": len(exported_tools),
+                    "exported_tools": exported_tools[:5] if len(exported_tools) > 5 else exported_tools  # Return first 5 as preview
+                }
+            except Exception as e:
+                return {
+                    "success": True,
+                    "message": "Export completed but couldn't read preview",
+                    "output_file": str(output_file)
+                }
+        else:
+            raise HTTPException(status_code=500, detail="Failed to export tools data")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in manual export: {e}")
+        raise HTTPException(status_code=500, detail=f"Error exporting tools: {str(e)}")
