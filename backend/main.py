@@ -379,8 +379,29 @@ def sync_alltools_json():
         # Start exporting from tools root
         export_tools_recursive(tools_path)
         
-        # Sort tools by path for consistent output
-        exported_tools.sort(key=lambda x: x["path"])
+        # Sort tools by path with natural sorting for numeric parts
+        def natural_sort_key(tool):
+            """Create a sort key that handles numeric parts naturally"""
+            import re
+            path = tool["path"]
+            
+            # Split path into parts and convert numeric sequences to integers for proper sorting
+            def convert_part(text):
+                # Split text into alternating non-numeric and numeric parts
+                parts = re.split(r'(\d+)', text)
+                result = []
+                for part in parts:
+                    if part.isdigit():
+                        result.append(int(part))
+                    else:
+                        result.append(part)
+                return result
+            
+            # Split the path by '/' and apply natural sorting to each part
+            path_parts = path.split('/')
+            return [convert_part(part) for part in path_parts]
+        
+        exported_tools.sort(key=natural_sort_key)
         
         # Write to alltools.json file
         output_file = tools_path / "alltools.json"
